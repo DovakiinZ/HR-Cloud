@@ -26,19 +26,8 @@ public class PayrollRunListItem
     public DateTime CreatedAt { get; set; }
 }
 
-public class PayslipDto
-{
-    public Guid Id { get; set; }
-    public Guid EmployeeId { get; set; }
-    public string EmployeeNumber { get; set; } = string.Empty;
-    public string EmployeeName { get; set; } = string.Empty;
-    public string Currency { get; set; } = "SAR";
-    public decimal GrossEarnings { get; set; }
-    public decimal TotalDeductions { get; set; }
-    public decimal NetAmount { get; set; }
-    public bool LedgerPosted { get; set; }
-    public string? ComponentsJson { get; set; }
-}
+// PayslipDto was part of PayrollRunDetail (dead DTO removed in Task 15).
+// Kept as a no-op placeholder comment so future grep finds this note.
 
 public class ValidationFindingDto
 {
@@ -67,18 +56,8 @@ public class RunTransitionDto
     public string? Reason { get; set; }
 }
 
-public class PayrollRunDetail : PayrollRunListItem
-{
-    public Guid PayrollDefinitionId { get; set; }
-    public Guid PayrollDefinitionVersionId { get; set; }
-    public Guid? RuleSetVersionId { get; set; }
-    public string? Notes { get; set; }
-    public DateTime? ValidatedAt { get; set; }
-    public DateTime? ApprovedAt { get; set; }
-    public List<PayslipDto> Payslips { get; set; } = new();
-    public List<ValidationFindingDto> Validation { get; set; } = new();
-    public List<RunTransitionDto> Transitions { get; set; } = new();
-}
+// PayrollRunDetail was the pre-Task-14 inline run detail. It had no producer after Task 14
+// decomposed the summary into a lightweight endpoint. Removed in Task 15.
 
 public class CreateRunRequest
 {
@@ -166,4 +145,81 @@ public class PayrollRunSummaryDto
 
     /// <summary>Ordered lifecycle transitions for the run timeline.</summary>
     public List<RunTransitionDto> Timeline { get; set; } = new();
+}
+
+// ── Task 15: paginated sub-resource row DTOs ──────────────────────────────────
+
+/// <summary>One included employee row for GET /runs/{id}/employees.</summary>
+public class RunEmployeeRowDto
+{
+    public Guid EmployeeId { get; set; }
+    public string EmployeeNumber { get; set; } = string.Empty;
+    public string EmployeeName { get; set; } = string.Empty;
+    public Guid? DepartmentId { get; set; }
+    public decimal Gross { get; set; }
+    public decimal Deductions { get; set; }
+    public decimal Net { get; set; }
+    public bool LedgerPosted { get; set; }
+}
+
+/// <summary>One excluded employee row for GET /runs/{id}/excluded.</summary>
+public class RunExcludedRowDto
+{
+    public Guid EmployeeId { get; set; }
+    public string EmployeeNumber { get; set; } = string.Empty;
+    public string EmployeeName { get; set; } = string.Empty;
+    public string ReasonCode { get; set; } = string.Empty;
+    public string? Detail { get; set; }
+}
+
+/// <summary>One validation finding row for GET /runs/{id}/validation.</summary>
+public class RunValidationRowDto
+{
+    public string Code { get; set; } = string.Empty;
+    public string Severity { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string? SuggestedAction { get; set; }
+    public string? TargetModule { get; set; }
+    public string? TargetScreen { get; set; }
+    public string? RelatedEntityType { get; set; }
+    public Guid? RelatedEntityId { get; set; }
+    public Guid? EmployeeId { get; set; }
+}
+
+/// <summary>One transaction row for GET /runs/{id}/transactions. Bucket classifies relative to the
+/// run snapshot: Consumed | ApprovedNotConsumed | PendingApproval | Posted | Reversed.</summary>
+public class RunTransactionRowDto
+{
+    public Guid TransactionId { get; set; }
+    public Guid EmployeeId { get; set; }
+    public string Kind { get; set; } = string.Empty;
+    public string TypeCode { get; set; } = string.Empty;
+    public decimal Amount { get; set; }
+    public DateTime EffectiveDate { get; set; }
+    public string Status { get; set; } = string.Empty;
+    public string Bucket { get; set; } = string.Empty;
+}
+
+/// <summary>One calculation history row for GET /runs/{id}/calculations (list, ordered by version desc).</summary>
+public class RunCalculationRowDto
+{
+    public int Version { get; set; }
+    public DateTime CalculatedAt { get; set; }
+    public Guid? ByUserId { get; set; }
+    public string TriggerSource { get; set; } = string.Empty;
+    public int EmployeeCount { get; set; }
+    public int IncludedEmployees { get; set; }
+    public int ExcludedEmployees { get; set; }
+    public int TransactionCountConsumed { get; set; }
+    public decimal Gross { get; set; }
+    public decimal Deductions { get; set; }
+    public decimal Net { get; set; }
+    public string ChangeSummary { get; set; } = string.Empty;
+}
+
+/// <summary>Single calculation detail for GET /runs/{id}/calculations/{version}.</summary>
+public class RunCalculationDetailDto : RunCalculationRowDto
+{
+    public List<RunExcludedRowDto> Exclusions { get; set; } = new();
+    public List<RunValidationRowDto> Findings { get; set; } = new();
 }

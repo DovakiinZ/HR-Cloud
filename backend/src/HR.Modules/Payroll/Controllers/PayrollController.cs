@@ -2,6 +2,7 @@ using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Models;
+using HR.Application.Common.Paging;
 using HR.Application.Engines.Finance;
 using HR.Application.Engines.Scope;
 using HR.Domain.Engines.Finance;
@@ -115,6 +116,112 @@ public class PayrollController : BaseApiController
         return summary is null
             ? NotFound(ApiResponse<PayrollRunSummaryDto>.Fail("Run not found"))
             : OkResponse(ToSummaryDto(summary));
+    }
+
+    // ── Task 15: paginated run sub-resource endpoints ─────────────────────────────
+
+    [HttpGet("runs/{id:guid}/employees")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<RunEmployeeRowDto>>>> RunEmployees(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var page = await _runRead.GetEmployeesAsync(id, request, ct);
+        return OkResponse(new PagedResult<RunEmployeeRowDto>(
+            page.Items.Select(ToEmployeeRowDto).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpGet("runs/{id:guid}/excluded")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<RunExcludedRowDto>>>> RunExcluded(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var page = await _runRead.GetExcludedAsync(id, request, ct);
+        return OkResponse(new PagedResult<RunExcludedRowDto>(
+            page.Items.Select(r => new RunExcludedRowDto
+            {
+                EmployeeId = r.EmployeeId, EmployeeNumber = r.EmployeeNumber,
+                EmployeeName = r.EmployeeName, ReasonCode = r.ReasonCode, Detail = r.Detail,
+            }).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpGet("runs/{id:guid}/validation")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<RunValidationRowDto>>>> RunValidation(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var page = await _runRead.GetValidationAsync(id, request, ct);
+        return OkResponse(new PagedResult<RunValidationRowDto>(
+            page.Items.Select(r => new RunValidationRowDto
+            {
+                Code = r.Code, Severity = r.Severity, Message = r.Message,
+                SuggestedAction = r.SuggestedAction, TargetModule = r.TargetModule,
+                TargetScreen = r.TargetScreen, RelatedEntityType = r.RelatedEntityType,
+                RelatedEntityId = r.RelatedEntityId, EmployeeId = r.EmployeeId,
+            }).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpGet("runs/{id:guid}/transactions")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<RunTransactionRowDto>>>> RunTransactions(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var page = await _runRead.GetTransactionsAsync(id, request, ct);
+        return OkResponse(new PagedResult<RunTransactionRowDto>(
+            page.Items.Select(r => new RunTransactionRowDto
+            {
+                TransactionId = r.TransactionId, EmployeeId = r.EmployeeId,
+                Kind = r.Kind, TypeCode = r.TypeCode, Amount = r.Amount,
+                EffectiveDate = r.EffectiveDate, Status = r.Status, Bucket = r.Bucket,
+            }).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpGet("runs/{id:guid}/calculations")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<RunCalculationRowDto>>>> RunCalculations(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var page = await _runRead.GetCalculationsAsync(id, request, ct);
+        return OkResponse(new PagedResult<RunCalculationRowDto>(
+            page.Items.Select(r => new RunCalculationRowDto
+            {
+                Version = r.Version, CalculatedAt = r.CalculatedAt, ByUserId = r.ByUserId,
+                TriggerSource = r.TriggerSource, EmployeeCount = r.EmployeeCount,
+                IncludedEmployees = r.IncludedEmployees, ExcludedEmployees = r.ExcludedEmployees,
+                TransactionCountConsumed = r.TransactionCountConsumed,
+                Gross = r.Gross, Deductions = r.Deductions, Net = r.Net, ChangeSummary = r.ChangeSummary,
+            }).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpGet("runs/{id:guid}/calculations/{version:int}")]
+    [RequirePermission("Payroll.View")]
+    public async Task<ActionResult<ApiResponse<RunCalculationDetailDto>>> RunCalculationDetail(
+        Guid id, int version, CancellationToken ct)
+    {
+        var detail = await _runRead.GetCalculationAsync(id, version, ct);
+        if (detail is null)
+            return NotFound(ApiResponse<RunCalculationDetailDto>.Fail("Calculation version not found"));
+
+        return OkResponse(new RunCalculationDetailDto
+        {
+            Version = detail.Version, CalculatedAt = detail.CalculatedAt, ByUserId = detail.ByUserId,
+            TriggerSource = detail.TriggerSource, EmployeeCount = detail.EmployeeCount,
+            IncludedEmployees = detail.IncludedEmployees, ExcludedEmployees = detail.ExcludedEmployees,
+            TransactionCountConsumed = detail.TransactionCountConsumed,
+            Gross = detail.Gross, Deductions = detail.Deductions, Net = detail.Net,
+            ChangeSummary = detail.ChangeSummary,
+            Exclusions = detail.Exclusions.Select(r => new RunExcludedRowDto
+            {
+                EmployeeId = r.EmployeeId, EmployeeNumber = r.EmployeeNumber,
+                EmployeeName = r.EmployeeName, ReasonCode = r.ReasonCode, Detail = r.Detail,
+            }).ToList(),
+            Findings = detail.Findings.Select(r => new RunValidationRowDto
+            {
+                Code = r.Code, Severity = r.Severity, Message = r.Message,
+                SuggestedAction = r.SuggestedAction, TargetModule = r.TargetModule,
+                TargetScreen = r.TargetScreen, RelatedEntityType = r.RelatedEntityType,
+                RelatedEntityId = r.RelatedEntityId, EmployeeId = r.EmployeeId,
+            }).ToList(),
+        });
     }
 
     [HttpPost("runs")]
@@ -516,5 +623,12 @@ public class PayrollController : BaseApiController
         RelatedEntityId = f.RelatedEntityId,
         EmployeeId = f.EmployeeId,
         EmployeeName = f.EmployeeName,
+    };
+
+    private static RunEmployeeRowDto ToEmployeeRowDto(RunEmployeeRow r) => new()
+    {
+        EmployeeId = r.EmployeeId, EmployeeNumber = r.EmployeeNumber, EmployeeName = r.EmployeeName,
+        DepartmentId = r.DepartmentId, Gross = r.Gross, Deductions = r.Deductions,
+        Net = r.Net, LedgerPosted = r.LedgerPosted,
     };
 }
