@@ -14,10 +14,19 @@ import { usePermissions } from "@/lib/permissions";
 import { StateBadge } from "@/components/payroll/state-badge";
 import { CalcStatusBadge, type CalcStatusExtended } from "@/components/payroll/calc-status-badge";
 import { RunKpiCards } from "@/components/payroll/run-kpi-cards";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { RunEmployeesTable } from "@/components/payroll/run-employees-table";
+import { RunExcludedPanel } from "@/components/payroll/run-excluded-panel";
+import { RunTransactionsPanel } from "@/components/payroll/run-transactions-panel";
+import { RunValidationPanel } from "@/components/payroll/run-validation-panel";
+import { RunTimeline } from "@/components/payroll/run-timeline";
 import {
   getRunSummary, calculateRun, validateRun, submitRun, approveRun, executeRun, cancelRun,
   type PayrollRunSummary,
 } from "@/lib/api/payroll";
+
+/** Run states where no mutations are permitted (quick-add hidden). */
+const IMMUTABLE_STATES = new Set(["Approved", "Executing", "Completed", "Locked", "Archived"]);
 
 function notifyError(err: unknown, fallback: string) {
   if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
@@ -229,17 +238,40 @@ function Inner({ id }: { id: string }) {
       {/* KPI cards — 7 metrics from summary.kpis */}
       <RunKpiCards kpis={run.kpis} currency={run.currency} />
 
-      {/*
-       * ── Task 20 panels go here ──────────────────────────────────────────
-       * The following tabbed panels will be added by Task 20:
-       *   - Employees panel   (getRunEmployees — paged RunEmployeeRow table)
-       *   - Excluded panel    (getRunExcluded — paged RunExcludedRow table)
-       *   - Transactions panel(getRunTransactions — paged RunTransactionRow table)
-       *   - Validation panel  (getRunValidation — paged RunValidationRow table)
-       *   - Timeline panel    (run.timeline entries — already on summary)
-       *   - Calculations panel(getRunCalculations — paged RunCalculationRow table)
-       * ──────────────────────────────────────────────────────────────────
-       */}
+      {/* ── Tabbed panels (Task 20) ─────────────────────────────────── */}
+      <Tabs defaultValue="employees">
+        <TabsList variant="line" className="w-full justify-start gap-1 border-b border-border rounded-none pb-0 h-auto">
+          <TabsTrigger value="employees" className="pb-2">الموظفون</TabsTrigger>
+          <TabsTrigger value="transactions" className="pb-2">الحركات</TabsTrigger>
+          <TabsTrigger value="validation" className="pb-2">التحقق</TabsTrigger>
+          <TabsTrigger value="excluded" className="pb-2">المستثنون</TabsTrigger>
+          <TabsTrigger value="timeline" className="pb-2">السجل الزمني</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="employees" className="pt-4">
+          <RunEmployeesTable runId={id} currency={run.currency} />
+        </TabsContent>
+
+        <TabsContent value="transactions" className="pt-4">
+          <RunTransactionsPanel
+            runId={id}
+            currency={run.currency}
+            immutable={IMMUTABLE_STATES.has(s)}
+          />
+        </TabsContent>
+
+        <TabsContent value="validation" className="pt-4">
+          <RunValidationPanel runId={id} />
+        </TabsContent>
+
+        <TabsContent value="excluded" className="pt-4">
+          <RunExcludedPanel runId={id} />
+        </TabsContent>
+
+        <TabsContent value="timeline" className="pt-4">
+          <RunTimeline runId={id} currency={run.currency} timeline={run.timeline} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
