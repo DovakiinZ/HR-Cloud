@@ -51,8 +51,8 @@ public class PayrollValidationSeverityTests
     [Fact]
     public void Finding_stores_deep_link_fields()
     {
-        var empId = Guid.NewGuid();
-        var runId = Guid.NewGuid();
+        var relatedEntityId = Guid.NewGuid();
+        var employeeId = Guid.NewGuid();
         var f = new ValidationFinding(
             "NEGATIVE_SALARY",
             ValidationSeverity.Error,
@@ -61,8 +61,8 @@ public class PayrollValidationSeverityTests
             "Payroll",
             "run",
             "Employee",
-            empId,
-            runId);
+            relatedEntityId,   // positional arg 8 → RelatedEntityId
+            employeeId);       // positional arg 9 → EmployeeId
 
         f.Code.Should().Be("NEGATIVE_SALARY");
         f.Severity.Should().Be(ValidationSeverity.Error);
@@ -70,7 +70,7 @@ public class PayrollValidationSeverityTests
         f.TargetModule.Should().Be("Payroll");
         f.TargetScreen.Should().Be("run");
         f.RelatedEntityType.Should().Be("Employee");
-        f.RelatedEntityId.Should().Be(empId);
-        f.EmployeeId.Should().Be(runId);
+        f.RelatedEntityId.Should().Be(relatedEntityId);
+        f.EmployeeId.Should().Be(employeeId);
     }
 }

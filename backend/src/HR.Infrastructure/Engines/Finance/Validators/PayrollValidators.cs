@@ -180,28 +180,3 @@ public sealed class RuleConflictValidator : IPayrollValidator
                     targetScreen: "definition");
     }
 }
-
-/// <summary>Warn when an employee has no payment method configured.
-/// Non-blocking but should be resolved before payroll execution.</summary>
-public sealed class MissingPaymentMethodValidator : IPayrollValidator
-{
-    public string Code => "MISSING_PAYMENT_METHOD";
-
-    public IEnumerable<ValidationFinding> Validate(PayrollValidationContext ctx)
-    {
-        foreach (var i in ctx.Inputs)
-        {
-            if (i.Facts.TryGetValue("HasPaymentMethod", out var v) && v is false)
-                yield return ValidationFinding.Warning(
-                    Code,
-                    $"Employee {i.EmployeeNumber} has no payment method configured.",
-                    suggestedAction: "Set a payment method for the employee in their profile.",
-                    targetModule: "Employees",
-                    targetScreen: "employee-profile",
-                    relatedEntityType: "Employee",
-                    relatedEntityId: i.EmployeeId,
-                    employeeId: i.EmployeeId,
-                    employeeName: i.EmployeeName);
-        }
-    }
-}
