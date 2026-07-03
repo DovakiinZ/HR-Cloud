@@ -73,6 +73,7 @@ public static class DependencyInjection
         services.AddScoped<HR.Infrastructure.Engines.Finance.PayrollComputation>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPreviewEngine, HR.Infrastructure.Engines.Finance.PayrollPreviewEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunEngine, HR.Infrastructure.Engines.Finance.PayrollRunEngine>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollPeriodGuard, HR.Infrastructure.Engines.Finance.PayrollPeriodGuard>();
 
         // Domain events (in-process MediatR transport) + ambient background tenant context
         services.AddSingleton<HR.Application.Common.Interfaces.IBackgroundExecutionContext, HR.Infrastructure.Services.BackgroundExecutionContext>();
