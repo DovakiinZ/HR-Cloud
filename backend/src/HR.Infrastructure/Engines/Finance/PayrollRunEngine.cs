@@ -454,7 +454,8 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
     {
         if (await _staleness.IsStaleAsync(run.Id, ct))
             throw new DomainException(
-                "PAYROLL_RUN_STALE: the run is stale — Recalculate to include pending transactions before continuing.");
+                "PAYROLL_RUN_STALE: the run is stale — Recalculate to include pending transactions before continuing.",
+                "PAYROLL_RUN_STALE");
     }
 
     private async Task<PayrollRun> LoadRunAsync(Guid runId, CancellationToken ct) =>

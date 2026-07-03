@@ -16,6 +16,6 @@ public sealed class PayrollPeriodClosedException : DomainException
     public PayrollPeriodClosedPayload Payload { get; }
 
     public PayrollPeriodClosedException(PayrollPeriodClosedPayload payload)
-        : base($"Payroll period {payload.TargetPeriodYear}-{payload.TargetPeriodMonth:D2} is closed by run {payload.BlockingRunNumber} ({payload.BlockingRunState}).")
+        : base($"Payroll period {payload.TargetPeriodYear}-{payload.TargetPeriodMonth:D2} is closed by run {payload.BlockingRunNumber} ({payload.BlockingRunState}).", payload.ErrorCode)
         => Payload = payload;
 }

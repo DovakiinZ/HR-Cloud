@@ -187,21 +187,16 @@ export function QuickAddTransactionDialog({ runId, onSuccess }: QuickAddTransact
       resetForm();
       onSuccess();
     } catch (err) {
-      if (err instanceof ApiError && err.status === 422) {
-        // Try to extract blockingRunNumber from errors array or message
-        const raw = err.errors?.[0] ?? err.message ?? "";
-        // The backend may return "PAYROLL_PERIOD_CLOSED:RunNumber=PAY-2025-01-001"
-        const match = raw.match(/RunNumber=([^\s,;]+)/i)
-          ?? raw.match(/blocking[_\s]?run[_\s]?number[:\s]+([^\s,;]+)/i);
-        const blockingRun = match?.[1] ?? null;
-        if (raw.includes("PAYROLL_PERIOD_CLOSED")) {
-          setPeriodClosedMsg(
-            blockingRun
-              ? `الفترة مُقفلة — المسيّر الحاكم: ${blockingRun}`
-              : "الفترة مُقفلة — لا يمكن إضافة حركات"
-          );
-          return;
-        }
+      if (err instanceof ApiError && err.code === "PAYROLL_PERIOD_CLOSED") {
+        // Structured payload (PayrollPeriodClosedPayload) carries the blocking run — no message parsing.
+        const payload = err.data as { blockingRunNumber?: string } | undefined;
+        const blockingRun = payload?.blockingRunNumber ?? null;
+        setPeriodClosedMsg(
+          blockingRun
+            ? `الفترة مُقفلة — المسيّر الحاكم: ${blockingRun}`
+            : "الفترة مُقفلة — لا يمكن إضافة حركات"
+        );
+        return;
       }
       if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
         toast.error(err instanceof ApiError ? err.message : "تعذر إضافة الحركة");

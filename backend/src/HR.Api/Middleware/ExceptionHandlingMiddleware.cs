@@ -46,19 +46,21 @@ public class ExceptionHandlingMiddleware
                 (object)ApiResponse.Fail(exception.Message)),
             InvalidPayrollTransactionStateException => (StatusCodes.Status409Conflict,
                 (object)ApiResponse.Fail(exception.Message)),
-            // Structured 422: a closed payroll period blocks the operation.
-            // Returns the machine-readable payload so the client (and SP6 amendment flow) can act on it.
+            // Structured 422: a closed payroll period blocks the operation. Uses the standard envelope
+            // with the machine-readable `code` and the full `data` payload so the client (and SP6
+            // amendment flow) can act on it without parsing the message.
             PayrollPeriodClosedException ppce => (StatusCodes.Status422UnprocessableEntity,
-                (object)new
+                (object)new ApiResponse<object>
                 {
-                    success = false,
-                    message = ppce.Message,
-                    errorCode = ppce.Payload.ErrorCode,
-                    data = ppce.Payload
+                    Success = false,
+                    Message = ppce.Message,
+                    Code = ppce.Payload.ErrorCode,
+                    Data = ppce.Payload
                 }),
-            // Explicit business-rule violations carry a user-facing reason.
-            DomainException => (StatusCodes.Status422UnprocessableEntity,
-                (object)ApiResponse.Fail(exception.Message)),
+            // Explicit business-rule violations carry a user-facing reason and an optional machine code
+            // (e.g. PAYROLL_RUN_STALE) surfaced on the envelope so clients branch without regexing.
+            DomainException dex => (StatusCodes.Status422UnprocessableEntity,
+                (object)ApiResponse.Fail(dex.Message, code: dex.Code)),
             // Safety net: the engine/service layer signals business rules (inactive type,
             // amount<0, duplicate code, …) via InvalidOperationException. Surface the real
             // reason as 422 instead of an opaque 500. Logged as a warning, not swallowed.
