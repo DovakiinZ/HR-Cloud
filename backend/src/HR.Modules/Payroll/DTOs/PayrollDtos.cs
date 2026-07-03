@@ -118,3 +118,52 @@ public class PayrollPreviewDto
 }
 
 public class CancelRunRequest { public string Reason { get; set; } = string.Empty; }
+
+// ── Task 14: lightweight run SUMMARY DTOs ──────────────────────────────────────────────────────────
+
+/// <summary>Server-side KPI aggregates returned by the run summary endpoint — no employee rows materialised.</summary>
+public class RunKpisDto
+{
+    public int IncludedEmployees { get; set; }
+    public int ExcludedEmployees { get; set; }
+    public decimal Gross { get; set; }
+    public decimal Deductions { get; set; }
+    public decimal Net { get; set; }
+    public int TransactionsConsumed { get; set; }
+    public int ApprovedNotConsumed { get; set; }
+}
+
+/// <summary>Metadata about the latest calculation snapshot pinned to the run.</summary>
+public class RunCalcMetaDto
+{
+    public int Version { get; set; }
+    public DateTime? At { get; set; }
+    public Guid? ByUserId { get; set; }
+    public string? ByUserName { get; set; }
+}
+
+/// <summary>Lightweight decomposed run summary: header + KPI cards + calc metadata + lifecycle timeline
+/// + calc-status badge. No inline payslips (those live on /employees, Task 15).</summary>
+public class PayrollRunSummaryDto
+{
+    public Guid Id { get; set; }
+    public string RunNumber { get; set; } = string.Empty;
+    public DateTime PeriodStart { get; set; }
+    public DateTime PeriodEnd { get; set; }
+    public int TargetPeriodYear { get; set; }
+    public int TargetPeriodMonth { get; set; }
+    public string State { get; set; } = string.Empty;
+    public string Currency { get; set; } = "SAR";
+
+    /// <summary>Server-side KPI aggregates (COUNT/SUM — never row-materialised).</summary>
+    public RunKpisDto Kpis { get; set; } = new();
+
+    /// <summary>Latest calculation snapshot metadata.</summary>
+    public RunCalcMetaDto Calc { get; set; } = new();
+
+    /// <summary>"UpToDate" or "RecalculationRequired" (server-derived from staleness evaluator).</summary>
+    public string CalculationStatus { get; set; } = string.Empty;
+
+    /// <summary>Ordered lifecycle transitions for the run timeline.</summary>
+    public List<RunTransitionDto> Timeline { get; set; } = new();
+}

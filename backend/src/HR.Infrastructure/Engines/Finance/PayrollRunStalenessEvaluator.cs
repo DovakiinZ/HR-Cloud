@@ -64,6 +64,12 @@ public sealed class PayrollRunStalenessEvaluator : IPayrollRunStalenessEvaluator
         return false;
     }
 
+    /// <summary>Public accessor so PayrollRunReadService can reuse the same TXN-id extraction logic
+    /// without duplicating JSON parsing. Exposed as a static utility rather than a virtual/interface
+    /// method because the extraction format is a stable internal serialisation contract.</summary>
+    public static IEnumerable<Guid> ParseTxnIdsPublic(string? componentsJson)
+        => ParseTxnIds(componentsJson);
+
     /// <summary>Parses TXN component codes from a payslip's ComponentsJson.
     /// The serialised format (written by PayrollTransactionMerge.Apply via PayrollRunEngine.CalculateAsync)
     /// is: ComponentsJson = { "order": [...], "components": [{ "Code": "TXN:{id:N}", ... }, ...] }

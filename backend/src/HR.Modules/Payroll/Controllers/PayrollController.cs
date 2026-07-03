@@ -1,4 +1,3 @@
-using System.Text.Json;
 using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
@@ -24,8 +23,6 @@ namespace HR.Modules.Payroll.Controllers;
 [Route("api/payroll")]
 public class PayrollController : BaseApiController
 {
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
-
     private readonly ApplicationDbContext _db;
     private readonly IPayrollRunEngine _runEngine;
     private readonly IPayrollPreviewEngine _previewEngine;
@@ -36,11 +33,13 @@ public class PayrollController : BaseApiController
     private readonly IPayrollTransactionService _transactions;
     private readonly IPayrollTransactionReversalService _reversals;
     private readonly IAttendancePayrollSyncService _attendanceSync;
+    private readonly IPayrollRunReadService _runRead;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
-        IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync)
+        IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync,
+        IPayrollRunReadService runRead)
     {
         _db = db;
         _runEngine = runEngine;
@@ -52,6 +51,7 @@ public class PayrollController : BaseApiController
         _transactions = transactions;
         _reversals = reversals;
         _attendanceSync = attendanceSync;
+        _runRead = runRead;
     }
 
     [HttpPost("bootstrap")]
@@ -109,63 +109,68 @@ public class PayrollController : BaseApiController
 
     [HttpGet("runs/{id:guid}")]
     [RequirePermission("Payroll.View")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Run(Guid id, CancellationToken ct)
-        => OkResponse(await BuildDetail(id, ct));
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Run(Guid id, CancellationToken ct)
+    {
+        var summary = await _runRead.GetSummaryAsync(id, ct);
+        return summary is null
+            ? NotFound(ApiResponse<PayrollRunSummaryDto>.Fail("Run not found"))
+            : OkResponse(ToSummaryDto(summary));
+    }
 
     [HttpPost("runs")]
     [RequirePermission("Payroll.Run")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> CreateRun([FromBody] CreateRunRequest req, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> CreateRun([FromBody] CreateRunRequest req, CancellationToken ct)
     {
         var run = await _runEngine.CreateAsync(req.DefinitionId, PayrollPeriod.Monthly(req.Year, req.Month), ct);
-        return CreatedResponse(await BuildDetail(run.Id, ct));
+        return CreatedResponse(ToSummaryDto((await _runRead.GetSummaryAsync(run.Id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/calculate")]
     [RequirePermission("Payroll.Run")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Calculate(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Calculate(Guid id, CancellationToken ct)
     {
         await _runEngine.CalculateAsync(id, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/validate")]
     [RequirePermission("Payroll.Run")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Validate(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Validate(Guid id, CancellationToken ct)
     {
         await _runEngine.ValidateAsync(id, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/submit")]
     [RequirePermission("Payroll.Run")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Submit(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Submit(Guid id, CancellationToken ct)
     {
         await _runEngine.SubmitForApprovalAsync(id, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/approve")]
     [RequirePermission("Payroll.Approve")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Approve(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Approve(Guid id, CancellationToken ct)
     {
         await _runEngine.ApproveAsync(id, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/execute")]
     [RequirePermission("Payroll.Lock")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Execute(Guid id, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Execute(Guid id, CancellationToken ct)
     {
         await _scheduler.EnqueueAsync(id, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     [HttpPost("runs/{id:guid}/cancel")]
     [RequirePermission("Payroll.Run")]
-    public async Task<ActionResult<ApiResponse<PayrollRunDetail>>> Cancel(Guid id, [FromBody] CancelRunRequest req, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PayrollRunSummaryDto>>> Cancel(Guid id, [FromBody] CancelRunRequest req, CancellationToken ct)
     {
         await _runEngine.CancelAsync(id, string.IsNullOrWhiteSpace(req.Reason) ? "Cancelled" : req.Reason, ct);
-        return OkResponse(await BuildDetail(id, ct));
+        return OkResponse(ToSummaryDto((await _runRead.GetSummaryAsync(id, ct))!));
     }
 
     // ---- payroll types ----
@@ -471,49 +476,26 @@ public class PayrollController : BaseApiController
         return versionId ?? throw new ConflictException("This payroll definition has no published version.");
     }
 
-    private async Task<PayrollRunDetail> BuildDetail(Guid id, CancellationToken ct)
+    /// <summary>Maps the application-layer summary record to the HTTP DTO.
+    /// Kept as a thin mapper here so the DTO is decoupled from the service record type.</summary>
+    private static PayrollRunSummaryDto ToSummaryDto(PayrollRunSummary s) => new()
     {
-        var run = await _db.PayrollRuns.AsNoTracking().FirstOrDefaultAsync(r => r.Id == id, ct)
-            ?? throw new NotFoundException("PayrollRun", id);
-
-        var payslips = await _db.PayrollPayslips.AsNoTracking()
-            .Where(p => p.PayrollRunId == id)
-            .OrderBy(p => p.EmployeeNumber)
-            .Select(p => new PayslipDto
-            {
-                Id = p.Id, EmployeeId = p.EmployeeId, EmployeeNumber = p.EmployeeNumber, EmployeeName = p.EmployeeName,
-                Currency = p.Currency, GrossEarnings = p.GrossEarnings, TotalDeductions = p.TotalDeductions,
-                NetAmount = p.NetAmount, LedgerPosted = p.LedgerPosted, ComponentsJson = p.ComponentsJson,
-            })
-            .ToListAsync(ct);
-
-        var transitions = await _db.PayrollRunTransitions.AsNoTracking()
-            .Where(t => t.PayrollRunId == id)
-            .OrderBy(t => t.At)
-            .Select(t => new RunTransitionDto { FromState = t.FromState.ToString(), ToState = t.ToState.ToString(), At = t.At, Reason = t.Reason })
-            .ToListAsync(ct);
-
-        var detail = new PayrollRunDetail
+        Id = s.Id, RunNumber = s.RunNumber, PeriodStart = s.PeriodStart, PeriodEnd = s.PeriodEnd,
+        TargetPeriodYear = s.TargetPeriodYear, TargetPeriodMonth = s.TargetPeriodMonth,
+        State = s.State, Currency = s.Currency,
+        Kpis = new RunKpisDto
         {
-            Id = run.Id, RunNumber = run.RunNumber, PeriodStart = run.PeriodStart, PeriodEnd = run.PeriodEnd,
-            State = run.State.ToString(), Currency = run.Currency, EmployeeCount = run.EmployeeCount,
-            GrossTotal = run.GrossTotal, DeductionTotal = run.DeductionTotal, NetTotal = run.NetTotal, CreatedAt = run.CreatedAt,
-            PayrollDefinitionId = run.PayrollDefinitionId, PayrollDefinitionVersionId = run.PayrollDefinitionVersionId,
-            RuleSetVersionId = run.RuleSetVersionId, Notes = run.Notes, ValidatedAt = run.ValidatedAt, ApprovedAt = run.ApprovedAt,
-            Payslips = payslips, Transitions = transitions,
-        };
-
-        if (!string.IsNullOrWhiteSpace(run.ValidationResultJson))
+            IncludedEmployees = s.Kpis.IncludedEmployees, ExcludedEmployees = s.Kpis.ExcludedEmployees,
+            Gross = s.Kpis.Gross, Deductions = s.Kpis.Deductions, Net = s.Kpis.Net,
+            TransactionsConsumed = s.Kpis.TransactionsConsumed, ApprovedNotConsumed = s.Kpis.ApprovedNotConsumed,
+        },
+        Calc = new RunCalcMetaDto
         {
-            try
-            {
-                var findings = JsonSerializer.Deserialize<List<ValidationFinding>>(run.ValidationResultJson, Json) ?? new();
-                detail.Validation = findings.Select(ToFindingDto).ToList();
-            }
-            catch (JsonException) { /* ignore malformed snapshot */ }
-        }
-        return detail;
-    }
+            Version = s.Calc.Version, At = s.Calc.At, ByUserId = s.Calc.ByUserId, ByUserName = s.Calc.ByUserName,
+        },
+        CalculationStatus = s.CalculationStatus,
+        Timeline = s.Timeline.Select(t => new RunTransitionDto { FromState = t.FromState, ToState = t.ToState, At = t.At, Reason = t.Reason }).ToList(),
+    };
 
     private static PayrollRunListItem ToListItem(PayrollRun r) => new()
     {
