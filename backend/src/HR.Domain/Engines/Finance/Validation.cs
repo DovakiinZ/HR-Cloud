@@ -4,6 +4,7 @@ public enum ValidationSeverity
 {
     Warning = 1,
     Error = 2,
+    Information = 3,
 }
 
 /// <summary>One finding produced by a payroll validator: a stable machine code, a severity, a human
