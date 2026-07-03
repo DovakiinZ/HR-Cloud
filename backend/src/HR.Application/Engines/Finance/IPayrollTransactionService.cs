@@ -13,7 +13,9 @@ public sealed record CreatePayrollTransactionArgs(
     DateTime? RecurrenceEndDate,
     string? Notes,
     Guid? AttachmentFileId,
-    bool SubmitImmediately);
+    bool SubmitImmediately,
+    PayrollTransactionOrigin Origin = PayrollTransactionOrigin.System,
+    Guid? CreatedFromRunId = null);
 
 public sealed record UpdatePayrollTransactionArgs(
     Guid TypeId,
@@ -60,7 +62,9 @@ public sealed record PayrollTransactionDto(
     Guid? PayrollRunId,
     DateTime? PostedAt,
     Guid? ReversesTransactionId,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    PayrollTransactionOrigin Origin,
+    Guid? CreatedFromRunId);
 
 public interface IPayrollTransactionService
 {

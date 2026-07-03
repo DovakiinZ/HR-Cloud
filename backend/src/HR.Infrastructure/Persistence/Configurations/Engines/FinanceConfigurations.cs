@@ -276,12 +276,17 @@ public class PayrollTransactionConfiguration : IEntityTypeConfiguration<PayrollT
         builder.Property(x => x.StatusReason).HasMaxLength(1000);
         builder.Property(x => x.ReversalReason).HasMaxLength(1000);
 
+        // Provenance: Origin defaults to System (0) so existing rows backfill cleanly on migration.
+        builder.Property(x => x.Origin).HasDefaultValue(HR.Domain.Enums.PayrollTransactionOrigin.System);
+
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId });
         builder.HasIndex(x => new { x.TenantId, x.Kind, x.Status });
         builder.HasIndex(x => new { x.TenantId, x.TargetPeriodYear, x.TargetPeriodMonth });
         builder.HasIndex(x => new { x.ReferenceType, x.ReferenceId });
         builder.HasIndex(x => x.ReversesTransactionId);
+        builder.HasIndex(x => x.Origin);
+        builder.HasIndex(x => x.CreatedFromRunId);
     }
 }
 

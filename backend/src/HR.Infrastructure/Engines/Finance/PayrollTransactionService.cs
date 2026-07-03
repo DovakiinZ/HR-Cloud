@@ -52,6 +52,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
             AttachmentFileId = args.AttachmentFileId,
             SourceModule = "Manual",
             Status = args.SubmitImmediately ? PayrollTransactionStatus.PendingApproval : PayrollTransactionStatus.Draft,
+            Origin = args.Origin,
+            CreatedFromRunId = args.CreatedFromRunId,
         };
         _db.PayrollTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
@@ -191,7 +193,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
         r.txn.TargetPeriodYear, r.txn.TargetPeriodMonth, r.txn.IsRecurring, r.txn.RecurrenceEndDate,
         r.txn.Notes, r.txn.AttachmentFileId, r.txn.SourceModule, r.txn.ReferenceType, r.txn.ReferenceId,
         r.txn.Status, r.txn.StatusReason, r.txn.PayrollRunId, r.txn.PostedAt,
-        r.txn.ReversesTransactionId, r.txn.CreatedAt);
+        r.txn.ReversesTransactionId, r.txn.CreatedAt,
+        r.txn.Origin, r.txn.CreatedFromRunId);
 
     private static string EmployeeName(HR.Modules.Employees.Entities.Employee? e)
     {
