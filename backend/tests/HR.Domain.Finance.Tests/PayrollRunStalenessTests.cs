@@ -67,7 +67,8 @@ public class PayrollRunStalenessTests
         var sync  = new AttendancePayrollSyncService(db, facts, calc, new PayrollPeriodGuard(db));
         return new PayrollRunEngine(db, comp,
             new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
-            new FakeUser(), new FakeAudit(), scope, sync);
+            new FakeUser(), new FakeAudit(), scope, sync,
+            new PayrollRunStalenessEvaluator(db, new PayrollTransactionConsumer(db)));
     }
 
     private static PayrollRunStalenessEvaluator Evaluator(ApplicationDbContext db) =>

@@ -45,7 +45,8 @@ public class AttendanceDeductionRunTests
         var sync = new AttendancePayrollSyncService(db, facts, calc, new PayrollPeriodGuard(db));
         return new PayrollRunEngine(db, computation,
             new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
-            new FakeUser(), new FakeAudit(), null!, sync); // scope null!: CalculateAsync never calls it
+            new FakeUser(), new FakeAudit(), null!, sync, // scope null!: CalculateAsync never calls it
+            new PayrollRunStalenessEvaluator(db, new PayrollTransactionConsumer(db)));
     }
 
     [Fact]

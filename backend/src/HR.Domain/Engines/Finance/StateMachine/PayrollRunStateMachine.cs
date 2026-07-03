@@ -26,8 +26,8 @@ public static class PayrollRunStateMachine
         {
             [PayrollRunState.Draft] = new[] { PayrollRunState.Preview, PayrollRunState.Cancelled },
             [PayrollRunState.Preview] = new[] { PayrollRunState.Validated, PayrollRunState.Draft, PayrollRunState.Cancelled },
-            [PayrollRunState.Validated] = new[] { PayrollRunState.PendingApproval, PayrollRunState.Draft, PayrollRunState.Cancelled },
-            [PayrollRunState.PendingApproval] = new[] { PayrollRunState.Approved, PayrollRunState.Draft, PayrollRunState.Cancelled },
+            [PayrollRunState.Validated] = new[] { PayrollRunState.PendingApproval, PayrollRunState.Preview, PayrollRunState.Draft, PayrollRunState.Cancelled },
+            [PayrollRunState.PendingApproval] = new[] { PayrollRunState.Approved, PayrollRunState.Preview, PayrollRunState.Draft, PayrollRunState.Cancelled },
             [PayrollRunState.Approved] = new[] { PayrollRunState.Executing, PayrollRunState.Cancelled },
             [PayrollRunState.Executing] = new[] { PayrollRunState.Completed, PayrollRunState.Failed },
             [PayrollRunState.Failed] = new[] { PayrollRunState.Executing, PayrollRunState.Cancelled },

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using HR.Application.Common.Exceptions;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Finance;
 using HR.Application.Engines.Scope;
@@ -26,6 +27,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
     private readonly IAuditLogService _audit;
     private readonly IScopeEngine _scope;
     private readonly IAttendancePayrollSyncService _attendanceSync;
+    private readonly IPayrollRunStalenessEvaluator _staleness;
 
     public PayrollRunEngine(
         ApplicationDbContext db,
@@ -34,7 +36,8 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         ICurrentUserService currentUser,
         IAuditLogService audit,
         IScopeEngine scope,
-        IAttendancePayrollSyncService attendanceSync)
+        IAttendancePayrollSyncService attendanceSync,
+        IPayrollRunStalenessEvaluator staleness)
     {
         _db = db;
         _computation = computation;
@@ -43,6 +46,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         _audit = audit;
         _scope = scope;
         _attendanceSync = attendanceSync;
+        _staleness = staleness;
     }
 
     private Guid? Actor => _currentUser.IsAuthenticated ? _currentUser.UserId : null;
@@ -109,8 +113,9 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
     public async Task<PayrollRun> CalculateAsync(Guid runId, CancellationToken ct = default)
     {
         var run = await LoadRunAsync(runId, ct);
-        if (run.State is not (PayrollRunState.Draft or PayrollRunState.Preview))
-            throw new InvalidOperationException($"A run can only be calculated while Draft or Preview (was {run.State}).");
+        if (run.State is not (PayrollRunState.Draft or PayrollRunState.Preview
+                              or PayrollRunState.Validated or PayrollRunState.PendingApproval))
+            throw new InvalidOperationException($"A run can only be calculated while Draft, Preview, Validated, or PendingApproval (was {run.State}).");
 
         var version = await _db.PayrollDefinitionVersions.FirstOrDefaultAsync(v => v.Id == run.PayrollDefinitionVersionId, ct)
             ?? throw new InvalidOperationException("Payroll definition version not found.");
@@ -158,7 +163,11 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         run.LastCalculatedAt = DateTime.UtcNow;
         run.LastCalculatedByUserId = Actor;
 
-        if (run.State == PayrollRunState.Draft)
+        // Recalculate always lands in Preview — Draft→Preview (first calc) or
+        // Validated/PendingApproval→Preview (recalc invalidates prior validation).
+        // Preview→Preview is a no-op transition that the state machine allows (it's the same state,
+        // so we only call ApplyTransition when the state actually changes).
+        if (run.State != PayrollRunState.Preview)
             ApplyTransition(run, PayrollRunState.Preview, "Calculated");
 
         await _db.SaveChangesAsync(ct);
@@ -172,6 +181,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         var run = await LoadRunAsync(runId, ct);
         if (run.State is not (PayrollRunState.Preview or PayrollRunState.Validated))
             throw new InvalidOperationException($"A run can only be validated while Preview or Validated (was {run.State}).");
+        await EnsureNotStaleAsync(run, ct);
 
         var version = await _db.PayrollDefinitionVersions.FirstOrDefaultAsync(v => v.Id == run.PayrollDefinitionVersionId, ct)
             ?? throw new InvalidOperationException("Payroll definition version not found.");
@@ -206,12 +216,21 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         return report;
     }
 
-    public Task<PayrollRun> SubmitForApprovalAsync(Guid runId, CancellationToken ct = default) =>
-        TransitionOnlyAsync(runId, PayrollRunState.PendingApproval, "Submitted for approval", ct);
+    public async Task<PayrollRun> SubmitForApprovalAsync(Guid runId, CancellationToken ct = default)
+    {
+        var run = await LoadRunAsync(runId, ct);
+        await EnsureNotStaleAsync(run, ct);
+        ApplyTransition(run, PayrollRunState.PendingApproval, "Submitted for approval");
+        await _db.SaveChangesAsync(ct);
+        await _audit.LogAsync($"PayrollRun{PayrollRunState.PendingApproval}", nameof(PayrollRun),
+            run.Id, null, new { to = nameof(PayrollRunState.PendingApproval), reason = "Submitted for approval" }, ct);
+        return run;
+    }
 
     public async Task<PayrollRun> ApproveAsync(Guid runId, CancellationToken ct = default)
     {
         var run = await LoadRunAsync(runId, ct);
+        await EnsureNotStaleAsync(run, ct);
         ApplyTransition(run, PayrollRunState.Approved, "Approved");
         run.ApprovedByUserId = Actor;
         run.ApprovedAt = DateTime.UtcNow;
@@ -245,6 +264,16 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             Reason = reason,
         });
         run.State = to;
+    }
+
+    /// <summary>Throws <see cref="DomainException"/> with code PAYROLL_RUN_STALE when the run's payslip
+    /// snapshot no longer matches the current consumable transaction set. Called at the top of
+    /// ValidateAsync, SubmitForApprovalAsync, and ApproveAsync to prevent advancing a stale run.</summary>
+    private async Task EnsureNotStaleAsync(PayrollRun run, CancellationToken ct)
+    {
+        if (await _staleness.IsStaleAsync(run.Id, ct))
+            throw new DomainException(
+                "PAYROLL_RUN_STALE: the run is stale — Recalculate to include pending transactions before continuing.");
     }
 
     private async Task<PayrollRun> LoadRunAsync(Guid runId, CancellationToken ct) =>

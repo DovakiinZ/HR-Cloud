@@ -64,7 +64,8 @@ public class PayrollRunPeriodIdentityTests
         var sync = new AttendancePayrollSyncService(db, facts, calc, new PayrollPeriodGuard(db));
         return new PayrollRunEngine(db, computation,
             new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
-            new FakeUser(), new FakeAudit(), scope, sync);
+            new FakeUser(), new FakeAudit(), scope, sync,
+            new PayrollRunStalenessEvaluator(db, new PayrollTransactionConsumer(db)));
     }
 
     // ── Step 1: failing test (RED before columns are added) ───────────────────────
