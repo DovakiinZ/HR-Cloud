@@ -213,7 +213,7 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             });
         }
 
-        run.EmployeeCount = frozen.Count + excludedEmployeeIds.Count;
+        run.EmployeeCount = frozen.Count;
         run.GrossTotal = Math.Round(includedResults.Sum(r => r.Gross), 2);
         run.DeductionTotal = Math.Round(includedResults.Sum(r => r.Deductions), 2);
         run.NetTotal = Math.Round(includedResults.Sum(r => r.Net), 2);
@@ -244,7 +244,9 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
 
         // ── Count consumed transactions ───────────────────────────────────────────
         // Re-use the consumer to count how many approved transactions were folded in.
-        var consumables = await _computation.GetConsumableCountAsync(version, period, frozen, ct);
+        // Use only validity-included employees so excluded employees don't inflate the count.
+        var includedEmployeeIds = frozen.Where(id => !excludedEmployeeIds.Contains(id)).ToList();
+        var consumables = await _computation.GetConsumableCountAsync(version, period, includedEmployeeIds, ct);
 
         // ── Build the versioned snapshot ─────────────────────────────────────────
         var previous = await _db.PayrollRunCalculations
@@ -347,8 +349,6 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
 
         var deltaTxn = consumedCount - previous.TransactionCountConsumed;
         var deltaExc = excludedCount - previous.ExcludedEmployees;
-        var deltaFindings = findingCount - (previous.ExcludedEmployees + previous.IncludedEmployees > 0
-            ? 0 : 0); // We don't store total finding count on the snapshot — use 0-delta as safe default
 
         var parts = new List<string>();
         parts.Add($"{deltaTxn:+#;-#;0} transactions consumed");
