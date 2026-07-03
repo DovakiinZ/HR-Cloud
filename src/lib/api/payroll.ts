@@ -241,16 +241,17 @@ export const getDefinitions = () => apiFetch<PayrollDefinitionDto[]>("/api/payro
 export const previewPayroll = (definitionId: string, year: number, month: number) =>
   apiFetch<PayrollPreviewDto>("/api/payroll/preview", { method: "POST", body: { definitionId, year, month } });
 export const listRuns = () => apiFetch<PayrollRunListItem[]>("/api/payroll/runs");
-export const getRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}`);
+/** @deprecated Use getRunSummary instead — backend now returns PayrollRunSummary */
+export const getRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}`);
 export const createRun = (definitionId: string, year: number, month: number) =>
-  apiFetch<PayrollRunDetail>("/api/payroll/runs", { method: "POST", body: { definitionId, year, month } });
-export const calculateRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/calculate`, { method: "POST" });
-export const validateRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/validate`, { method: "POST" });
-export const submitRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/submit`, { method: "POST" });
-export const approveRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/approve`, { method: "POST" });
-export const executeRun = (id: string) => apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/execute`, { method: "POST" });
+  apiFetch<PayrollRunSummary>("/api/payroll/runs", { method: "POST", body: { definitionId, year, month } });
+export const calculateRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/calculate`, { method: "POST" });
+export const validateRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/validate`, { method: "POST" });
+export const submitRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/submit`, { method: "POST" });
+export const approveRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/approve`, { method: "POST" });
+export const executeRun = (id: string) => apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/execute`, { method: "POST" });
 export const cancelRun = (id: string, reason: string) =>
-  apiFetch<PayrollRunDetail>(`/api/payroll/runs/${id}/cancel`, { method: "POST", body: { reason } });
+  apiFetch<PayrollRunSummary>(`/api/payroll/runs/${id}/cancel`, { method: "POST", body: { reason } });
 
 // ---------------------------------------------------------------------------
 // Decomposed run endpoints (D9) — Tasks 19/20 consume these
