@@ -99,6 +99,18 @@ public sealed class PayrollComputation
         return new PayrollComputationResult(version, inputs, results, compilation);
     }
 
+    /// <summary>Returns the count of consumable transactions for the given population in the period.
+    /// Used by the snapshot writer to populate <c>TransactionCountConsumed</c>.</summary>
+    public async Task<int> GetConsumableCountAsync(
+        PayrollDefinitionVersion version, PayrollPeriod period,
+        IReadOnlyCollection<Guid> employeeIds, CancellationToken ct = default)
+    {
+        if (employeeIds.Count == 0) return 0;
+        var consumables = await _consumer.GetConsumableAsync(
+            period.Year, period.Month, employeeIds, version.CutoffDay, version.CarryToNextPeriod, ct);
+        return consumables.Count;
+    }
+
     /// <summary>Other non-cancelled runs for the same definition whose period overlaps this one.</summary>
     public async Task<IReadOnlyList<(Guid RunId, DateTime Start, DateTime End)>> OverlappingRunsAsync(
         Guid definitionId, PayrollPeriod period, Guid? excludeRunId, CancellationToken ct)

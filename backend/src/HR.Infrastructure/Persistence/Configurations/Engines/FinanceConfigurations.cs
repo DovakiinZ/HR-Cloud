@@ -1,4 +1,5 @@
 using HR.Domain.Engines.Finance.Entities;
+using HR.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -307,5 +308,82 @@ public class PayrollTransactionAttendanceReferenceConfiguration : IEntityTypeCon
             .WithMany()
             .HasForeignKey(x => x.PayrollTransactionId)
             .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class PayrollRunCalculationConfiguration : IEntityTypeConfiguration<PayrollRunCalculation>
+{
+    public void Configure(EntityTypeBuilder<PayrollRunCalculation> builder)
+    {
+        builder.ToTable("engine_payroll_run_calculations");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.PayrollEngineVersion).HasMaxLength(20).IsRequired();
+        builder.Property(x => x.ValidationSummary).HasMaxLength(500).IsRequired();
+        builder.Property(x => x.FindingSummary).HasMaxLength(500).IsRequired();
+        builder.Property(x => x.ChangeSummary).HasMaxLength(1000).IsRequired();
+        builder.Property(x => x.GrossTotal).HasColumnType("decimal(18,2)");
+        builder.Property(x => x.DeductionTotal).HasColumnType("decimal(18,2)");
+        builder.Property(x => x.NetTotal).HasColumnType("decimal(18,2)");
+
+        // Unique: (run, version) — monotonic, never reused.
+        builder.HasIndex(x => new { x.PayrollRunId, x.CalculationVersion }).IsUnique();
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.PayrollRunId);
+        builder.HasIndex(x => x.PreviousCalculationId);
+
+        // FK to PayrollRun (cascade: delete all snapshots when the run is deleted).
+        builder.HasOne<PayrollRun>()
+            .WithMany()
+            .HasForeignKey(x => x.PayrollRunId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Child findings and exclusions cascade from this calculation.
+        builder.HasMany(x => x.Findings)
+            .WithOne()
+            .HasForeignKey(x => x.PayrollRunCalculationId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasMany(x => x.Exclusions)
+            .WithOne()
+            .HasForeignKey(x => x.PayrollRunCalculationId)
+            .OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
+public class PayrollCalculationFindingConfiguration : IEntityTypeConfiguration<PayrollCalculationFinding>
+{
+    public void Configure(EntityTypeBuilder<PayrollCalculationFinding> builder)
+    {
+        builder.ToTable("engine_payroll_calculation_findings");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Code).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.Message).HasMaxLength(2000).IsRequired();
+        builder.Property(x => x.SuggestedAction).HasMaxLength(1000);
+        builder.Property(x => x.TargetModule).HasMaxLength(100);
+        builder.Property(x => x.TargetScreen).HasMaxLength(100);
+        builder.Property(x => x.RelatedEntityType).HasMaxLength(120);
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.PayrollRunCalculationId);
+        builder.HasIndex(x => x.EmployeeId);
+        builder.HasIndex(x => new { x.PayrollRunCalculationId, x.Severity });
+    }
+}
+
+public class PayrollCalculationExclusionConfiguration : IEntityTypeConfiguration<PayrollCalculationExclusion>
+{
+    public void Configure(EntityTypeBuilder<PayrollCalculationExclusion> builder)
+    {
+        builder.ToTable("engine_payroll_calculation_exclusions");
+        builder.HasKey(x => x.Id);
+
+        builder.Property(x => x.Detail).HasMaxLength(1000);
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.PayrollRunCalculationId);
+        builder.HasIndex(x => x.EmployeeId);
+        builder.HasIndex(x => new { x.PayrollRunCalculationId, x.EmployeeId });
     }
 }
