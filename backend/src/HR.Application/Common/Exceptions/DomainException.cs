@@ -9,5 +9,11 @@ namespace HR.Application.Common.Exceptions;
 /// </summary>
 public class DomainException : Exception
 {
+    /// <summary>Optional machine-readable code (e.g. PAYROLL_RUN_STALE) the middleware surfaces on the
+    /// response envelope so clients can branch on it without parsing the human message.</summary>
+    public string? Code { get; }
+
     public DomainException(string message) : base(message) { }
+
+    public DomainException(string message, string? code) : base(message) => Code = code;
 }

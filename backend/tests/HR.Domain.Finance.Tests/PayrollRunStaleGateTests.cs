@@ -210,8 +210,9 @@ public class PayrollRunStaleGateTests
 
         var engine = Engine(db);
         var act = () => engine.ValidateAsync(run.Id, default);
-        (await act.Should().ThrowAsync<DomainException>())
-            .Which.Message.Should().Contain("PAYROLL_RUN_STALE");
+        var ex = (await act.Should().ThrowAsync<DomainException>()).Which;
+        ex.Message.Should().Contain("PAYROLL_RUN_STALE");
+        ex.Code.Should().Be("PAYROLL_RUN_STALE");
     }
 
     [Fact]
@@ -223,8 +224,9 @@ public class PayrollRunStaleGateTests
 
         var engine = Engine(db);
         var act = () => engine.SubmitForApprovalAsync(run.Id, default);
-        (await act.Should().ThrowAsync<DomainException>())
-            .Which.Message.Should().Contain("PAYROLL_RUN_STALE");
+        var ex = (await act.Should().ThrowAsync<DomainException>()).Which;
+        ex.Message.Should().Contain("PAYROLL_RUN_STALE");
+        ex.Code.Should().Be("PAYROLL_RUN_STALE");
     }
 
     [Fact]
@@ -236,8 +238,9 @@ public class PayrollRunStaleGateTests
 
         var engine = Engine(db);
         var act = () => engine.ApproveAsync(run.Id, default);
-        (await act.Should().ThrowAsync<DomainException>())
-            .Which.Message.Should().Contain("PAYROLL_RUN_STALE");
+        var ex = (await act.Should().ThrowAsync<DomainException>()).Which;
+        ex.Message.Should().Contain("PAYROLL_RUN_STALE");
+        ex.Code.Should().Be("PAYROLL_RUN_STALE");
     }
 
     // ── recalculate-resets-to-Preview tests ──────────────────────────────────────

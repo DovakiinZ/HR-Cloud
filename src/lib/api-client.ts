@@ -25,11 +25,18 @@ export const API_BASE_URL = resolveBaseUrl();
 export class ApiError extends Error {
   status: number;
   errors?: string[];
-  constructor(message: string, status: number, errors?: string[]) {
+  /** Machine-readable error code from the envelope (e.g. PAYROLL_RUN_STALE, PAYROLL_PERIOD_CLOSED).
+   *  Branch on this instead of parsing `message`. */
+  code?: string;
+  /** Structured payload the backend attaches to some errors (e.g. the blocking run for a closed period). */
+  data?: unknown;
+  constructor(message: string, status: number, errors?: string[], code?: string, data?: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.errors = errors;
+    this.code = code;
+    this.data = data;
   }
 }
 
@@ -38,6 +45,7 @@ interface ApiEnvelope<T> {
   data: T | null;
   message: string | null;
   errors: string[] | null;
+  code?: string | null;
 }
 
 interface RequestOptions {
@@ -88,7 +96,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
 
   if (res.status === 403) {
     toast.error("ليس لديك صلاحية لتنفيذ هذا الإجراء");
-    throw new ApiError(envelope?.message || "Forbidden", 403, envelope?.errors ?? undefined);
+    throw new ApiError(envelope?.message || "Forbidden", 403, envelope?.errors ?? undefined, envelope?.code ?? undefined, envelope?.data ?? undefined);
   }
 
   if (res.status >= 500) {
@@ -97,7 +105,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   }
 
   if (!res.ok || (envelope && !envelope.success)) {
-    throw new ApiError(envelope?.message || "حدث خطأ غير متوقع", res.status, envelope?.errors ?? undefined);
+    throw new ApiError(envelope?.message || "حدث خطأ غير متوقع", res.status, envelope?.errors ?? undefined, envelope?.code ?? undefined, envelope?.data ?? undefined);
   }
 
   return envelope ? (envelope.data as T) : (undefined as T);
