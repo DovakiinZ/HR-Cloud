@@ -13,15 +13,30 @@ public sealed class NegativeSalaryValidator : IPayrollValidator
         foreach (var i in ctx.Inputs)
         {
             if (i.Facts.TryGetValue("BasicSalary", out var v) && ToDecimal(v) < 0m)
-                yield return ValidationFinding.Error(Code,
-                    $"Employee {i.EmployeeNumber} has a negative basic salary.", i.EmployeeId, i.EmployeeName);
+                yield return ValidationFinding.Error(
+                    Code,
+                    $"Employee {i.EmployeeNumber} has a negative basic salary.",
+                    suggestedAction: "Review and correct the employee's salary configuration.",
+                    targetModule: "Employees",
+                    targetScreen: "employee-profile",
+                    relatedEntityType: "Employee",
+                    relatedEntityId: i.EmployeeId,
+                    employeeId: i.EmployeeId,
+                    employeeName: i.EmployeeName);
         }
         foreach (var r in ctx.Results)
         {
             if (r.Net < 0m)
-                yield return ValidationFinding.Error(Code,
+                yield return ValidationFinding.Error(
+                    Code,
                     $"Employee {r.Input.EmployeeNumber} has a negative net pay ({r.Net}).",
-                    r.EmployeeId, r.Input.EmployeeName);
+                    suggestedAction: "Review deductions and allowances to ensure net pay is not negative.",
+                    targetModule: "Payroll",
+                    targetScreen: "run",
+                    relatedEntityType: "Employee",
+                    relatedEntityId: r.EmployeeId,
+                    employeeId: r.EmployeeId,
+                    employeeName: r.Input.EmployeeName);
         }
     }
 
@@ -44,8 +59,16 @@ public sealed class InvalidGosiValidator : IPayrollValidator
             {
                 var rate = v switch { decimal d => d, int n => n, double db => (decimal)db, _ => -1m };
                 if (rate < 0m || rate > 50m)
-                    yield return ValidationFinding.Error(Code,
-                        $"Employee {i.EmployeeNumber} has an invalid GOSI rate ({rate}%).", i.EmployeeId, i.EmployeeName);
+                    yield return ValidationFinding.Error(
+                        Code,
+                        $"Employee {i.EmployeeNumber} has an invalid GOSI rate ({rate}%).",
+                        suggestedAction: "Set the GOSI rate to a value between 0% and 50% in the employee's payroll settings.",
+                        targetModule: "Employees",
+                        targetScreen: "employee-profile",
+                        relatedEntityType: "Employee",
+                        relatedEntityId: i.EmployeeId,
+                        employeeId: i.EmployeeId,
+                        employeeName: i.EmployeeName);
             }
         }
     }
@@ -61,9 +84,16 @@ public sealed class DuplicateEmployeeValidator : IPayrollValidator
         foreach (var dup in ctx.Inputs.GroupBy(i => i.EmployeeId).Where(g => g.Count() > 1))
         {
             var first = dup.First();
-            yield return ValidationFinding.Error(Code,
+            yield return ValidationFinding.Error(
+                Code,
                 $"Employee {first.EmployeeNumber} appears {dup.Count()} times in this run.",
-                first.EmployeeId, first.EmployeeName);
+                suggestedAction: "Remove the duplicate employee entry from the payroll run population.",
+                targetModule: "Payroll",
+                targetScreen: "run",
+                relatedEntityType: "Employee",
+                relatedEntityId: first.EmployeeId,
+                employeeId: first.EmployeeId,
+                employeeName: first.EmployeeName);
         }
     }
 }
@@ -76,8 +106,14 @@ public sealed class OverlappingPayrollValidator : IPayrollValidator
     public IEnumerable<ValidationFinding> Validate(PayrollValidationContext ctx)
     {
         if (ctx.OverlappingRuns.Count > 0)
-            yield return ValidationFinding.Error(Code,
-                $"This period overlaps {ctx.OverlappingRuns.Count} existing run(s) for the same payroll definition.");
+            yield return ValidationFinding.Error(
+                Code,
+                $"This period overlaps {ctx.OverlappingRuns.Count} existing run(s) for the same payroll definition.",
+                suggestedAction: "Cancel or adjust the overlapping payroll run before proceeding.",
+                targetModule: "Payroll",
+                targetScreen: "run",
+                relatedEntityType: null,
+                relatedEntityId: null);
     }
 }
 
@@ -91,9 +127,16 @@ public sealed class CurrencyValidator : IPayrollValidator
         foreach (var i in ctx.Inputs)
         {
             if (!string.Equals(i.Currency, ctx.Currency, StringComparison.OrdinalIgnoreCase))
-                yield return ValidationFinding.Error(Code,
+                yield return ValidationFinding.Error(
+                    Code,
                     $"Employee {i.EmployeeNumber} currency ({i.Currency}) differs from the run currency ({ctx.Currency}).",
-                    i.EmployeeId, i.EmployeeName);
+                    suggestedAction: $"Update the employee's currency to {ctx.Currency} or adjust the payroll run currency.",
+                    targetModule: "Employees",
+                    targetScreen: "employee-profile",
+                    relatedEntityType: "Employee",
+                    relatedEntityId: i.EmployeeId,
+                    employeeId: i.EmployeeId,
+                    employeeName: i.EmployeeName);
         }
     }
 }
@@ -107,8 +150,16 @@ public sealed class MissingAttendanceValidator : IPayrollValidator
     public IEnumerable<ValidationFinding> Validate(PayrollValidationContext ctx)
     {
         foreach (var i in ctx.Inputs.Where(x => !x.HasAttendanceData))
-            yield return ValidationFinding.Warning(Code,
-                $"Employee {i.EmployeeNumber} has no attendance records for the period.", i.EmployeeId, i.EmployeeName);
+            yield return ValidationFinding.Warning(
+                Code,
+                $"Employee {i.EmployeeNumber} has no attendance records for the period.",
+                suggestedAction: "Import or enter attendance data for this employee before finalising payroll.",
+                targetModule: "Attendance",
+                targetScreen: "daily",
+                relatedEntityType: "Employee",
+                relatedEntityId: i.EmployeeId,
+                employeeId: i.EmployeeId,
+                employeeName: i.EmployeeName);
     }
 }
 
@@ -121,6 +172,36 @@ public sealed class RuleConflictValidator : IPayrollValidator
     {
         if (ctx.RuleCompilation is { IsValid: false } rc)
             foreach (var err in rc.Errors)
-                yield return ValidationFinding.Error(Code, err);
+                yield return ValidationFinding.Error(
+                    Code,
+                    err,
+                    suggestedAction: "Fix the rule-set compilation error in the payroll definition.",
+                    targetModule: "Payroll",
+                    targetScreen: "definition");
+    }
+}
+
+/// <summary>Warn when an employee has no payment method configured.
+/// Non-blocking but should be resolved before payroll execution.</summary>
+public sealed class MissingPaymentMethodValidator : IPayrollValidator
+{
+    public string Code => "MISSING_PAYMENT_METHOD";
+
+    public IEnumerable<ValidationFinding> Validate(PayrollValidationContext ctx)
+    {
+        foreach (var i in ctx.Inputs)
+        {
+            if (i.Facts.TryGetValue("HasPaymentMethod", out var v) && v is false)
+                yield return ValidationFinding.Warning(
+                    Code,
+                    $"Employee {i.EmployeeNumber} has no payment method configured.",
+                    suggestedAction: "Set a payment method for the employee in their profile.",
+                    targetModule: "Employees",
+                    targetScreen: "employee-profile",
+                    relatedEntityType: "Employee",
+                    relatedEntityId: i.EmployeeId,
+                    employeeId: i.EmployeeId,
+                    employeeName: i.EmployeeName);
+        }
     }
 }

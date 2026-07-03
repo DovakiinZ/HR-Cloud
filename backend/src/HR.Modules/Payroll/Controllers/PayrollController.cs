@@ -524,7 +524,15 @@ public class PayrollController : BaseApiController
 
     private static ValidationFindingDto ToFindingDto(ValidationFinding f) => new()
     {
-        Code = f.Code, Severity = f.Severity.ToString(), Message = f.Message,
-        EmployeeId = f.EmployeeId, EmployeeName = f.EmployeeName,
+        Code = f.Code,
+        Severity = f.Severity.ToString(),
+        Message = f.Message,
+        SuggestedAction = f.SuggestedAction,
+        TargetModule = f.TargetModule,
+        TargetScreen = f.TargetScreen,
+        RelatedEntityType = f.RelatedEntityType,
+        RelatedEntityId = f.RelatedEntityId,
+        EmployeeId = f.EmployeeId,
+        EmployeeName = f.EmployeeName,
     };
 }

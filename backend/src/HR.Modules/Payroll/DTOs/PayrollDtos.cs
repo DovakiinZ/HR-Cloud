@@ -45,6 +45,16 @@ public class ValidationFindingDto
     public string Code { get; set; } = string.Empty;
     public string Severity { get; set; } = string.Empty;
     public string Message { get; set; } = string.Empty;
+    /// <summary>Actionable guidance for the payroll administrator to resolve this finding.</summary>
+    public string? SuggestedAction { get; set; }
+    /// <summary>Front-end module the user should navigate to (e.g. "Employees", "Payroll", "Attendance").</summary>
+    public string? TargetModule { get; set; }
+    /// <summary>Specific screen within TargetModule (e.g. "employee-profile", "run", "daily").</summary>
+    public string? TargetScreen { get; set; }
+    /// <summary>Domain object type this finding concerns (e.g. "Employee").</summary>
+    public string? RelatedEntityType { get; set; }
+    /// <summary>PK of the related entity for deep-linking.</summary>
+    public Guid? RelatedEntityId { get; set; }
     public Guid? EmployeeId { get; set; }
     public string? EmployeeName { get; set; }
 }
