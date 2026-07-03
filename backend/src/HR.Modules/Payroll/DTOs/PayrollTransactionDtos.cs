@@ -50,3 +50,13 @@ public sealed record AttendancePayrollSyncReportDto(
 
 public sealed record AttendanceBreakdownDto(
     Guid AttendanceRecordId, DateTime Date, string PenaltyKind, int Minutes, int Days, decimal AmountContribution);
+
+public sealed class CreateRunTransactionRequest
+{
+    public Guid EmployeeId { get; set; }
+    public PayrollTransactionKind Kind { get; set; }
+    public Guid TypeId { get; set; }
+    public decimal Amount { get; set; }
+    public DateTime? EffectiveDate { get; set; }
+    public string? Notes { get; set; }
+}

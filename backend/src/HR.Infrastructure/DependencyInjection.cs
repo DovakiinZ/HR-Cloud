@@ -76,6 +76,7 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPeriodGuard, HR.Infrastructure.Engines.Finance.PayrollPeriodGuard>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunStalenessEvaluator, HR.Infrastructure.Engines.Finance.PayrollRunStalenessEvaluator>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunReadService, HR.Infrastructure.Engines.Finance.PayrollRunReadService>();
+        services.AddScoped<HR.Application.Engines.Finance.ICreateFromRunService, HR.Infrastructure.Engines.Finance.CreateFromRunService>();
 
         // Domain events (in-process MediatR transport) + ambient background tenant context
         services.AddSingleton<HR.Application.Common.Interfaces.IBackgroundExecutionContext, HR.Infrastructure.Services.BackgroundExecutionContext>();

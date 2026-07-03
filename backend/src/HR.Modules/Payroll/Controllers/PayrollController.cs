@@ -35,12 +35,13 @@ public class PayrollController : BaseApiController
     private readonly IPayrollTransactionReversalService _reversals;
     private readonly IAttendancePayrollSyncService _attendanceSync;
     private readonly IPayrollRunReadService _runRead;
+    private readonly ICreateFromRunService _createFromRun;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
         IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync,
-        IPayrollRunReadService runRead)
+        IPayrollRunReadService runRead, ICreateFromRunService createFromRun)
     {
         _db = db;
         _runEngine = runEngine;
@@ -53,6 +54,7 @@ public class PayrollController : BaseApiController
         _reversals = reversals;
         _attendanceSync = attendanceSync;
         _runRead = runRead;
+        _createFromRun = createFromRun;
     }
 
     [HttpPost("bootstrap")]
@@ -173,6 +175,17 @@ public class PayrollController : BaseApiController
                 Kind = r.Kind, TypeCode = r.TypeCode, Amount = r.Amount,
                 EffectiveDate = r.EffectiveDate, Status = r.Status, Bucket = r.Bucket,
             }).ToList(), page.Page, page.PageSize, page.Total));
+    }
+
+    [HttpPost("runs/{id:guid}/transactions")]
+    [RequirePermission("Payroll.Transaction.CreateFromRun")]
+    public async Task<ActionResult<ApiResponse<Guid>>> CreateRunTransaction(
+        Guid id, [FromBody] CreateRunTransactionRequest req, CancellationToken ct)
+    {
+        var newId = await _createFromRun.CreateAsync(id,
+            new Application.Engines.Finance.CreateFromRunRequest(
+                req.EmployeeId, req.Kind, req.TypeId, req.Amount, req.EffectiveDate, req.Notes), ct);
+        return CreatedResponse(newId);
     }
 
     [HttpGet("runs/{id:guid}/calculations")]
