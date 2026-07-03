@@ -11,7 +11,8 @@ namespace HR.Infrastructure.Engines.Finance;
 
 /// <summary>Creates a PayrollTransaction from the run-page quick-action panel (design decision D10).
 /// The transaction inherits the run's definition/period/employee, has its EffectiveDate defaulted to
-/// the run's PeriodEnd, and is created PendingApproval with Origin=RunPage + CreatedFromRunId stamped.</summary>
+/// the run's PeriodStart (day 1 always resolves to the run's own period regardless of cutoff/carry),
+/// and is created PendingApproval with Origin=RunPage + CreatedFromRunId stamped.</summary>
 public sealed class CreateFromRunService : ICreateFromRunService
 {
     private readonly ApplicationDbContext _db;
@@ -35,12 +36,18 @@ public sealed class CreateFromRunService : ICreateFromRunService
 
         // Load the pinned definition version for cutoff/carry settings.
         var ver = await _db.PayrollDefinitionVersions
-                      .FirstAsync(v => v.Id == run.PayrollDefinitionVersionId, ct);
+                      .FirstOrDefaultAsync(v => v.Id == run.PayrollDefinitionVersionId, ct)
+                  ?? throw new DomainException(
+                      "PAYROLL_DEFINITION_VERSION_MISSING: the run's pinned definition version was not found.");
 
-        // EffectiveDate: default to run.PeriodEnd (UTC); if supplied, it must resolve to the run period.
+        // EffectiveDate: default to run.PeriodStart (UTC).
+        // Day 1 of the target month is always ≤ CutoffDay, so it always resolves to the run's OWN period
+        // regardless of CutoffDay or CarryToNextPeriod — avoiding a false PAYROLL_EFFECTIVE_DATE_OUT_OF_PERIOD
+        // error that the old PeriodEnd default produced for carry=true runs whose PeriodEnd is month-end.
+        // If a date is supplied by the caller it must still resolve to the run's period.
         var effective = req.EffectiveDate.HasValue
             ? req.EffectiveDate.Value
-            : DateTime.SpecifyKind(run.PeriodEnd, DateTimeKind.Utc);
+            : DateTime.SpecifyKind(run.PeriodStart, DateTimeKind.Utc);
 
         var (ry, rm) = PayrollPeriodResolver.Resolve(effective, ver.CutoffDay, ver.CarryToNextPeriod);
         if (ry != run.TargetPeriodYear || rm != run.TargetPeriodMonth)

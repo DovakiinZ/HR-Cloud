@@ -81,9 +81,11 @@ public class CreateFromRunTests
         };
         db.Employees.Add(emp);
 
-        // PeriodEnd = cutoff day (27th) so DateTime.SpecifyKind(run.PeriodEnd, Utc) resolves within the
-        // target period (Resolve(Jul-27, cutoff=27, carry=true) returns July because 27 == 27, not > 27).
-        var periodEnd = new DateTime(year, month, 27, 0, 0, 0, DateTimeKind.Utc);
+        // PeriodEnd = realistic calendar month-end (e.g. Jul 31).
+        // With CutoffDay=27 and CarryToNextPeriod=true, Resolve(Jul-31) would yield August — proving
+        // that the old PeriodEnd default was broken. Fix 1 changes the default to PeriodStart (Jul 1)
+        // which always resolves to the run's own period, making the no-date path safe for carry runs.
+        var periodEnd = new DateTime(year, month, DateTime.DaysInMonth(year, month), 0, 0, 0, DateTimeKind.Utc);
 
         var run = new PayrollRun
         {
