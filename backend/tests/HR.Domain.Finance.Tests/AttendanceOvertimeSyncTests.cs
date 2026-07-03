@@ -30,7 +30,7 @@ public class AttendanceOvertimeSyncTests
     private static AttendancePayrollSyncService Svc(ApplicationDbContext db)
     {
         var facts = new PayrollFactProvider(db, null!, new AttendanceWageCalculator(db));
-        return new AttendancePayrollSyncService(db, facts, new AttendanceWageCalculator(db));
+        return new AttendancePayrollSyncService(db, facts, new AttendanceWageCalculator(db), new PayrollPeriodGuard(db));
     }
 
     private static async Task<Guid> SeedAsync(ApplicationDbContext db)

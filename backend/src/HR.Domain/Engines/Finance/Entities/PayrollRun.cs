@@ -18,6 +18,26 @@ public class PayrollRun : TenantEntity
     public DateTime PeriodStart { get; set; }
     public DateTime PeriodEnd { get; set; }
 
+    /// <summary>The calendar year of the pay period this run covers. Stamped at creation from the
+    /// requested <see cref="PayrollPeriod"/> and never mutated afterward (immutable period identity).</summary>
+    public int TargetPeriodYear { get; set; }
+
+    /// <summary>The calendar month (1-12) of the pay period this run covers. Stamped at creation and
+    /// never mutated afterward (immutable period identity).</summary>
+    public int TargetPeriodMonth { get; set; }
+
+    /// <summary>Incremented by the engine each time <c>CalculateAsync</c> produces a new payslip
+    /// snapshot. Starts at 0 (never calculated); first calculate sets it to 1.</summary>
+    public int CurrentCalculationVersion { get; set; }
+
+    /// <summary>UTC timestamp of the most recent successful <c>CalculateAsync</c> call. Null until
+    /// first calculation.</summary>
+    public DateTime? LastCalculatedAt { get; set; }
+
+    /// <summary>The user who triggered the most recent <c>CalculateAsync</c>. Null until first
+    /// calculation.</summary>
+    public Guid? LastCalculatedByUserId { get; set; }
+
     public PayrollRunState State { get; set; } = PayrollRunState.Draft;
 
     public string Currency { get; set; } = "SAR";

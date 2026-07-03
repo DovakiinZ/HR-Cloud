@@ -63,4 +63,13 @@ public class PayrollTransaction : TenantEntity
     // --- Reversal link: defined in 2A, transition wired in 2B. ---
     public Guid? ReversesTransactionId { get; set; }
     public string? ReversalReason { get; set; }
+
+    // --- Audit provenance (D10, SP3 Task 9). ---
+    /// <summary>UI/API surface that created the transaction. Distinct from SourceModule (business system).
+    /// Always non-nullable; defaults to System so existing rows backfill cleanly.</summary>
+    public PayrollTransactionOrigin Origin { get; set; } = PayrollTransactionOrigin.System;
+
+    /// <summary>The payroll run from which this transaction was created, if any (e.g. via RunPage).
+    /// Permanent; not changed when the run that consumes/posts it is set on PayrollRunId.</summary>
+    public Guid? CreatedFromRunId { get; set; }
 }

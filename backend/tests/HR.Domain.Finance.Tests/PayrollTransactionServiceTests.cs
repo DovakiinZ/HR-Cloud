@@ -28,7 +28,7 @@ public class PayrollTransactionServiceTests
     private static ApplicationDbContext Ctx(string name) => new(
         new DbContextOptionsBuilder<ApplicationDbContext>().UseInMemoryDatabase(name).Options, new FakeUser());
 
-    private static PayrollTransactionService Svc(ApplicationDbContext db) => new(db, new FakeUser());
+    private static PayrollTransactionService Svc(ApplicationDbContext db) => new(db, new FakeUser(), new PayrollPeriodGuard(db));
 
     // Seeds one employee + one DeductionType master-data item, returns their ids.
     private static async Task<(Guid empId, Guid typeId)> SeedAsync(ApplicationDbContext db, string objectType)

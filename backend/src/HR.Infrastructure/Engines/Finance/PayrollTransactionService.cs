@@ -13,11 +13,13 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
 {
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
+    private readonly IPayrollPeriodGuard _guard;
 
-    public PayrollTransactionService(ApplicationDbContext db, ICurrentUserService user)
+    public PayrollTransactionService(ApplicationDbContext db, ICurrentUserService user, IPayrollPeriodGuard guard)
     {
         _db = db;
         _user = user;
+        _guard = guard;
     }
 
     // Postgres 'timestamp with time zone' columns only accept UTC DateTimes. Dates supplied from the API
@@ -50,6 +52,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
             AttachmentFileId = args.AttachmentFileId,
             SourceModule = "Manual",
             Status = args.SubmitImmediately ? PayrollTransactionStatus.PendingApproval : PayrollTransactionStatus.Draft,
+            Origin = args.Origin,
+            CreatedFromRunId = args.CreatedFromRunId,
         };
         _db.PayrollTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
@@ -136,6 +140,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
     {
         var txn = await GetTrackedAsync(id, ct);
         PayrollTransactionStateMachine.EnsureCanTransition(txn.Status, to);
+        if (to == PayrollTransactionStatus.Approved)
+            await _guard.EnsurePeriodOpenForAsync(txn.EmployeeId, txn.EffectiveDate, ct);
         txn.Status = to;
         if (reason is not null) txn.StatusReason = reason;
         await _db.SaveChangesAsync(ct);
@@ -187,7 +193,8 @@ public sealed class PayrollTransactionService : IPayrollTransactionService
         r.txn.TargetPeriodYear, r.txn.TargetPeriodMonth, r.txn.IsRecurring, r.txn.RecurrenceEndDate,
         r.txn.Notes, r.txn.AttachmentFileId, r.txn.SourceModule, r.txn.ReferenceType, r.txn.ReferenceId,
         r.txn.Status, r.txn.StatusReason, r.txn.PayrollRunId, r.txn.PostedAt,
-        r.txn.ReversesTransactionId, r.txn.CreatedAt);
+        r.txn.ReversesTransactionId, r.txn.CreatedAt,
+        r.txn.Origin, r.txn.CreatedFromRunId);
 
     private static string EmployeeName(HR.Modules.Employees.Entities.Employee? e)
     {

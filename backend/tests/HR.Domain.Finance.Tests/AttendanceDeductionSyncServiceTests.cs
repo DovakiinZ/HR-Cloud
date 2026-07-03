@@ -34,7 +34,7 @@ public class AttendancePayrollSyncServiceTests
         // PayrollFactProvider never dereferences IScopeEngine when an explicit employee population is passed
         // (BuildInputsAsync:41), and the sync service always passes one — so null scope is safe in tests.
         var facts = new PayrollFactProvider(db, null!, new AttendanceWageCalculator(db));
-        return new AttendancePayrollSyncService(db, facts, new AttendanceWageCalculator(db));
+        return new AttendancePayrollSyncService(db, facts, new AttendanceWageCalculator(db), new PayrollPeriodGuard(db));
     }
 
     // Seeds an employee (30-day-basis daily wage = 3000/30 = 100/day, hourly = 12.5) + the 3 deduction types.

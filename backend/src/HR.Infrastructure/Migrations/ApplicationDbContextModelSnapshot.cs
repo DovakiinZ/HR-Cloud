@@ -2922,6 +2922,144 @@ namespace HR.Infrastructure.Migrations
                     b.ToTable("engine_finance_formula_functions", (string)null);
                 });
 
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollCalculationExclusion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<Guid>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PayrollRunCalculationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ReasonCode")
+                        .HasColumnType("integer");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("PayrollRunCalculationId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("PayrollRunCalculationId", "EmployeeId")
+                        .HasDatabaseName("IX_engine_payroll_calculation_exclusions_PayrollRunCalculatio~1");
+
+                    b.ToTable("engine_payroll_calculation_exclusions", (string)null);
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollCalculationFinding", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Code")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text");
+
+                    b.Property<Guid?>("EmployeeId")
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)");
+
+                    b.Property<Guid>("PayrollRunCalculationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("RelatedEntityId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Severity")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("SuggestedAction")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("TargetModule")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<string>("TargetScreen")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmployeeId");
+
+                    b.HasIndex("PayrollRunCalculationId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("PayrollRunCalculationId", "Severity");
+
+                    b.ToTable("engine_payroll_calculation_findings", (string)null);
+                });
+
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollDefinition", b =>
                 {
                     b.Property<Guid>("Id")
@@ -3238,6 +3376,9 @@ namespace HR.Infrastructure.Migrations
                         .HasMaxLength(3)
                         .HasColumnType("character varying(3)");
 
+                    b.Property<int>("CurrentCalculationVersion")
+                        .HasColumnType("integer");
+
                     b.Property<decimal>("DeductionTotal")
                         .HasColumnType("decimal(18,2)");
 
@@ -3255,6 +3396,12 @@ namespace HR.Infrastructure.Migrations
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("boolean");
+
+                    b.Property<DateTime?>("LastCalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("LastCalculatedByUserId")
+                        .HasColumnType("uuid");
 
                     b.Property<decimal>("NetTotal")
                         .HasColumnType("decimal(18,2)");
@@ -3286,6 +3433,12 @@ namespace HR.Infrastructure.Migrations
                     b.Property<int>("State")
                         .HasColumnType("integer");
 
+                    b.Property<int>("TargetPeriodMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TargetPeriodYear")
+                        .HasColumnType("integer");
+
                     b.Property<Guid>("TenantId")
                         .HasColumnType("uuid");
 
@@ -3309,10 +3462,125 @@ namespace HR.Infrastructure.Migrations
 
                     b.HasIndex("TenantId");
 
+                    b.HasIndex("TargetPeriodYear", "TargetPeriodMonth");
+
                     b.HasIndex("TenantId", "RunNumber")
                         .IsUnique();
 
+                    b.HasIndex("PayrollDefinitionId", "TargetPeriodYear", "TargetPeriodMonth")
+                        .IsUnique()
+                        .HasFilter("\"State\" <> 11");
+
                     b.ToTable("engine_payroll_runs", (string)null);
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunCalculation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTime>("CalculatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CalculatedByUserId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("CalculationVersion")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ChangeSummary")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<decimal>("DeductionTotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("text");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("EmployeeCount")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ExcludedEmployees")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("FindingSummary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<decimal>("GrossTotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("IncludedEmployees")
+                        .HasColumnType("integer");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("boolean");
+
+                    b.Property<decimal>("NetTotal")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid>("PayrollDefinitionVersionId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PayrollEngineVersion")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<Guid>("PayrollRunId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("PreviousCalculationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("TenantId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("TransactionCountConsumed")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("TriggerSource")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTime?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UpdatedBy")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ValidationSummary")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PayrollRunId");
+
+                    b.HasIndex("PreviousCalculationId");
+
+                    b.HasIndex("TenantId");
+
+                    b.HasIndex("PayrollRunId", "CalculationVersion")
+                        .IsUnique();
+
+                    b.ToTable("engine_payroll_run_calculations", (string)null);
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunItem", b =>
@@ -3535,6 +3803,9 @@ namespace HR.Infrastructure.Migrations
                     b.Property<string>("CreatedBy")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("CreatedFromRunId")
+                        .HasColumnType("uuid");
+
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -3562,6 +3833,11 @@ namespace HR.Infrastructure.Migrations
                     b.Property<string>("Notes")
                         .HasMaxLength(2000)
                         .HasColumnType("character varying(2000)");
+
+                    b.Property<int>("Origin")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0);
 
                     b.Property<Guid?>("PayrollRunId")
                         .HasColumnType("uuid");
@@ -3623,6 +3899,10 @@ namespace HR.Infrastructure.Migrations
                         .HasColumnType("text");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CreatedFromRunId");
+
+                    b.HasIndex("Origin");
 
                     b.HasIndex("ReversesTransactionId");
 
@@ -8861,6 +9141,13 @@ namespace HR.Infrastructure.Migrations
                         },
                         new
                         {
+                            Id = new Guid("15f80127-6240-afe3-5c85-0bd941bf9c68"),
+                            Description = "CreateFromRun permission for Payroll.Transaction",
+                            Module = "Payroll.Transaction",
+                            Name = "CreateFromRun"
+                        },
+                        new
+                        {
                             Id = new Guid("d94bd01a-1e0e-4c2f-1322-a70e9fc47b08"),
                             Description = "View permission for Leaves",
                             Module = "Leaves",
@@ -10314,6 +10601,24 @@ namespace HR.Infrastructure.Migrations
                     b.Navigation("DocumentTemplate");
                 });
 
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollCalculationExclusion", b =>
+                {
+                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRunCalculation", null)
+                        .WithMany("Exclusions")
+                        .HasForeignKey("PayrollRunCalculationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollCalculationFinding", b =>
+                {
+                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRunCalculation", null)
+                        .WithMany("Findings")
+                        .HasForeignKey("PayrollRunCalculationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollDefinitionVersion", b =>
                 {
                     b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollDefinition", "Definition")
@@ -10334,6 +10639,15 @@ namespace HR.Infrastructure.Migrations
                         .IsRequired();
 
                     b.Navigation("Run");
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunCalculation", b =>
+                {
+                    b.HasOne("HR.Domain.Engines.Finance.Entities.PayrollRun", null)
+                        .WithMany()
+                        .HasForeignKey("PayrollRunId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunItem", b =>
@@ -11179,6 +11493,13 @@ namespace HR.Infrastructure.Migrations
                     b.Navigation("Payslips");
 
                     b.Navigation("Transitions");
+                });
+
+            modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.PayrollRunCalculation", b =>
+                {
+                    b.Navigation("Exclusions");
+
+                    b.Navigation("Findings");
                 });
 
             modelBuilder.Entity("HR.Domain.Engines.Finance.Entities.RuleSet", b =>
