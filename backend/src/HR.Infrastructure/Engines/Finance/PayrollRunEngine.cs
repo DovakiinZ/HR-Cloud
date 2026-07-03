@@ -65,6 +65,9 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
             RuleSetVersionId = version.RuleSetVersionId,
             PeriodStart = period.Start,
             PeriodEnd = period.End,
+            // Immutable period identity — stamped once at creation, never reassigned.
+            TargetPeriodYear = period.Year,
+            TargetPeriodMonth = period.Month,
             State = PayrollRunState.Draft,
             Currency = version.Currency,
         };
@@ -149,6 +152,11 @@ public sealed class PayrollRunEngine : IPayrollRunEngine
         run.GrossTotal = Math.Round(computation.Results.Sum(r => r.Gross), 2);
         run.DeductionTotal = Math.Round(computation.Results.Sum(r => r.Deductions), 2);
         run.NetTotal = Math.Round(computation.Results.Sum(r => r.Net), 2);
+
+        // Update calc pointers — immutable period identity (TargetPeriodYear/Month) is NOT touched here.
+        run.CurrentCalculationVersion += 1;
+        run.LastCalculatedAt = DateTime.UtcNow;
+        run.LastCalculatedByUserId = Actor;
 
         if (run.State == PayrollRunState.Draft)
             ApplyTransition(run, PayrollRunState.Preview, "Calculated");

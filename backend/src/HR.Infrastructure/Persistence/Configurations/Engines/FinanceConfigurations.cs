@@ -164,10 +164,19 @@ public class PayrollRunConfiguration : IEntityTypeConfiguration<PayrollRun>
         builder.Property(x => x.Notes).HasMaxLength(2000);
         builder.Property(x => x.ValidationResultJson).HasColumnType("jsonb");
 
+        builder.Property(x => x.TargetPeriodYear).IsRequired();
+        builder.Property(x => x.TargetPeriodMonth).IsRequired();
+
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => new { x.TenantId, x.RunNumber }).IsUnique();
         builder.HasIndex(x => x.PayrollDefinitionId);
         builder.HasIndex(x => x.State);
+        builder.HasIndex(x => new { x.TargetPeriodYear, x.TargetPeriodMonth });
+        // One active run per (definition, period). Excludes Cancelled (11); SP6 will extend the filter
+        // to also exclude Voided/Superseded states once those are introduced.
+        builder.HasIndex(x => new { x.PayrollDefinitionId, x.TargetPeriodYear, x.TargetPeriodMonth })
+               .IsUnique()
+               .HasFilter("\"State\" <> 11");   // 11 = Cancelled (PayrollRunState.Cancelled)
 
         builder.HasMany(x => x.Transitions)
             .WithOne(t => t.Run)
