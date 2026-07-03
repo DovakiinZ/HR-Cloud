@@ -61,7 +61,7 @@ public class PayrollRunPeriodIdentityTests
         var calc = new AttendanceWageCalculator(db);
         var facts = new PayrollFactProvider(db, scope, calc);
         var computation = new PayrollComputation(db, facts, new RuleEngine(db), new PayrollTransactionConsumer(db));
-        var sync = new AttendancePayrollSyncService(db, facts, calc);
+        var sync = new AttendancePayrollSyncService(db, facts, calc, new PayrollPeriodGuard(db));
         return new PayrollRunEngine(db, computation,
             new PayrollValidationEngine(Array.Empty<IPayrollValidator>()),
             new FakeUser(), new FakeAudit(), scope, sync);

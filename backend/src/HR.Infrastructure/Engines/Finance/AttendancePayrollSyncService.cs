@@ -25,9 +25,14 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
     private readonly ApplicationDbContext _db;
     private readonly IPayrollFactProvider _facts;
     private readonly AttendanceWageCalculator _attendance;
+    private readonly IPayrollPeriodGuard _guard;
 
-    public AttendancePayrollSyncService(ApplicationDbContext db, IPayrollFactProvider facts, AttendanceWageCalculator attendance)
-    { _db = db; _facts = facts; _attendance = attendance; }
+    public AttendancePayrollSyncService(
+        ApplicationDbContext db,
+        IPayrollFactProvider facts,
+        AttendanceWageCalculator attendance,
+        IPayrollPeriodGuard guard)
+    { _db = db; _facts = facts; _attendance = attendance; _guard = guard; }
 
     public async Task<AttendancePayrollSyncReport> SyncAsync(
         PayrollDefinitionVersion version, PayrollPeriod period,
@@ -103,6 +108,9 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
 
                 if (txn is null)
                 {
+                    // Guard: no path may create a born-Approved transaction against a frozen period.
+                    await _guard.EnsurePeriodOpenForAsync(empId, period.Start, ct);
+
                     txn = new PayrollTransaction
                     {
                         Kind = txnKind,
@@ -125,7 +133,11 @@ public sealed class AttendancePayrollSyncService : IAttendancePayrollSyncService
                 {
                     txn.Amount = amount;
                     if (txn.Status == PayrollTransactionStatus.Cancelled)
+                    {
+                        // Guard: re-activating a Cancelled record also moves it to Approved.
+                        await _guard.EnsurePeriodOpenForAsync(empId, txn.EffectiveDate, ct);
                         txn.Status = PayrollTransactionStatus.Approved;
+                    }
                     updated++;
                 }
 
