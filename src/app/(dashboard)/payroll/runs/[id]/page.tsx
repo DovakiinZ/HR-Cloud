@@ -2,9 +2,10 @@
 
 import { use, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowRight, Loader2, Calculator, ShieldCheck, Send,
-  CheckCircle2, PlayCircle, XCircle, RefreshCw, AlertTriangle,
+  CheckCircle2, PlayCircle, XCircle, RefreshCw, AlertTriangle, Ban, FilePlus2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { RunPayslipsPanel } from "@/components/payroll/run-payslips-panel";
 import { RunExportsPanel } from "@/components/payroll/run-exports-panel";
 import {
   getRunSummary, calculateRun, validateRun, submitRun, approveRun, executeRun, cancelRun,
+  voidRun, amendRun, reissueRun,
   type PayrollRunSummary,
 } from "@/lib/api/payroll";
 
@@ -43,6 +45,7 @@ export default function RunDetailPage({ params }: { params: Promise<{ id: string
 
 function Inner({ id }: { id: string }) {
   const { has } = usePermissions();
+  const router = useRouter();
   const [run, setRun] = useState<PayrollRunSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -103,6 +106,33 @@ function Inner({ id }: { id: string }) {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleVoid() {
+    const reason = window.prompt("سبب إلغاء المسيّر (سيتم عكس جميع القيود المحاسبية):");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    try { await voidRun(id, reason.trim()); toast.success("تم إلغاء المسيّر وعكس قيوده"); await load(); }
+    catch (err) { notifyError(err, "تعذر إلغاء المسيّر"); }
+    finally { setBusy(false); }
+  }
+
+  async function handleAmend() {
+    const reason = window.prompt("سبب التعديل (سيتم إلغاء هذا المسيّر وإنشاء مسيّر جديد يحل محله):");
+    if (!reason?.trim()) return;
+    setBusy(true);
+    try {
+      const r = await amendRun(id, reason.trim());
+      toast.success(`تم إنشاء مسيّر التعديل ${r.newRunNumber}`);
+      router.push(`/payroll/runs/${r.newRunId}`);
+    } catch (err) { notifyError(err, "تعذر تعديل المسيّر"); setBusy(false); }
+  }
+
+  async function handleReissue() {
+    setBusy(true);
+    try { const n = await reissueRun(id); toast.success(`تم إعادة إصدار ${n.toLocaleString("ar-SA")} قسيمة راتب`); }
+    catch (err) { notifyError(err, "تعذر إعادة إصدار القسائم"); }
+    finally { setBusy(false); }
   }
 
   if (loading) return (
@@ -186,6 +216,23 @@ function Inner({ id }: { id: string }) {
               className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10"
             >
               <XCircle className="h-4 w-4" /> إلغاء
+            </Button>
+          )}
+
+          {/* SP6 — posted-run corrections (Completed/Locked) */}
+          {(s === "Completed" || s === "Locked") && has("Payroll.Run.Reissue") && (
+            <Button onClick={handleReissue} disabled={busy} variant="outline" className="gap-2">
+              <RefreshCw className="h-4 w-4" /> إعادة إصدار القسائم
+            </Button>
+          )}
+          {(s === "Completed" || s === "Locked") && has("Payroll.Run.Amend") && (
+            <Button onClick={handleAmend} disabled={busy} variant="outline" className="gap-2">
+              <FilePlus2 className="h-4 w-4" /> تعديل (مسيّر جديد)
+            </Button>
+          )}
+          {(s === "Completed" || s === "Locked") && has("Payroll.Run.Void") && (
+            <Button onClick={handleVoid} disabled={busy} variant="outline" className="gap-2 text-destructive border-destructive/30 hover:bg-destructive/10">
+              <Ban className="h-4 w-4" /> إلغاء وعكس القيود
             </Button>
           )}
         </div>

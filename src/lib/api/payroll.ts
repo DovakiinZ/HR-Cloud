@@ -348,6 +348,25 @@ export async function downloadPayslip(runId: string, employeeId: string, fileNam
 }
 
 // ---------------------------------------------------------------------------
+// Void / Amend / Reissue (SP6)
+// ---------------------------------------------------------------------------
+
+export interface AmendResult {
+  voidedRunId: string;
+  newRunId: string;
+  newRunNumber: string;
+}
+
+export const voidRun = (runId: string, reason: string): Promise<null> =>
+  apiFetch<null>(`/api/payroll/runs/${runId}/void`, { method: "POST", body: { reason } });
+
+export const amendRun = (runId: string, reason: string): Promise<AmendResult> =>
+  apiFetch<AmendResult>(`/api/payroll/runs/${runId}/amend`, { method: "POST", body: { reason } });
+
+export const reissueRun = (runId: string): Promise<number> =>
+  apiFetch<number>(`/api/payroll/runs/${runId}/reissue`, { method: "POST" });
+
+// ---------------------------------------------------------------------------
 // Exports (SP5) — pluggable report + bank-file framework
 // ---------------------------------------------------------------------------
 
@@ -403,7 +422,7 @@ export const EXPORT_FORMATS = ["Excel", "Csv", "Txt", "Xml"] as const;
 export const STATE_AR: Record<string, string> = {
   Draft: "مسودة", Preview: "معاينة", Validated: "تم التحقق", PendingApproval: "بانتظار الاعتماد",
   Approved: "معتمد", Executing: "قيد التنفيذ", Completed: "مكتمل", Locked: "مقفل", Archived: "مؤرشف",
-  Failed: "فشل", Cancelled: "ملغي",
+  Failed: "فشل", Cancelled: "ملغي", Voided: "ملغى وعُكست قيوده",
 };
 
 export function money(n: number, currency = "SAR"): string {
