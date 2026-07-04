@@ -23,6 +23,7 @@ import { RunValidationPanel } from "@/components/payroll/run-validation-panel";
 import { RunTimeline } from "@/components/payroll/run-timeline";
 import { RunPayslipsPanel } from "@/components/payroll/run-payslips-panel";
 import { RunExportsPanel } from "@/components/payroll/run-exports-panel";
+import { RunAuditPanel } from "@/components/payroll/run-audit-panel";
 import {
   getRunSummary, calculateRun, validateRun, submitRun, approveRun, executeRun, cancelRun,
   voidRun, amendRun, reissueRun,
@@ -296,6 +297,7 @@ function Inner({ id }: { id: string }) {
           <TabsTrigger value="excluded" className="pb-2">المستثنون</TabsTrigger>
           {has("Payroll.Payslip.View") && <TabsTrigger value="payslips" className="pb-2">قسائم الرواتب</TabsTrigger>}
           {has("Payroll.Export") && <TabsTrigger value="exports" className="pb-2">التصدير</TabsTrigger>}
+          {has("Payroll.Audit.View") && <TabsTrigger value="audit" className="pb-2">سجل التدقيق</TabsTrigger>}
           <TabsTrigger value="timeline" className="pb-2">السجل الزمني</TabsTrigger>
         </TabsList>
 
@@ -328,6 +330,12 @@ function Inner({ id }: { id: string }) {
         {has("Payroll.Export") && (
           <TabsContent value="exports" className="pt-4">
             <RunExportsPanel runId={id} />
+          </TabsContent>
+        )}
+
+        {has("Payroll.Audit.View") && (
+          <TabsContent value="audit" className="pt-4">
+            <RunAuditPanel runId={id} />
           </TabsContent>
         )}
 
