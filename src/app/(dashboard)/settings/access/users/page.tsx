@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Search, Loader2, KeyRound, Mail, Ban, CheckCircle2, LogOut, ShieldCheck } from "lucide-react";
+import { ArrowRight, Plus, Search, Loader2, KeyRound, Lock, Mail, Ban, CheckCircle2, LogOut, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,7 +17,7 @@ import { usePermissions } from "@/lib/permissions";
 import { getEmployees } from "@/lib/api/employees";
 import type { Employee } from "@/types";
 import {
-  listUsers, getUser, createUser, disableUser, enableUser, forceLogout, resetPassword,
+  listUsers, getUser, createUser, disableUser, enableUser, forceLogout, resetPassword, setPassword,
   changeEmail, setUserRoles, listRoles, listTemplates, assignTemplate, revokeTemplate,
   STATUS_AR, type UserListItem, type UserDetail, type RoleDto, type TemplateDto,
 } from "@/lib/api/access";
@@ -58,6 +58,7 @@ function UsersInner() {
 
   const [createOpen, setCreateOpen] = useState(false);
   const [accessUser, setAccessUser] = useState<UserDetail | null>(null);
+  const [pwdUser, setPwdUser] = useState<UserListItem | null>(null);
 
   const load = useCallback(async () => {
     try { setUsers(await listUsers()); } catch (err) { notifyError(err, "تعذر تحميل المستخدمين"); }
@@ -148,7 +149,8 @@ function UsersInner() {
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">
                     <button title="إدارة الوصول" onClick={() => openAccess(u.id)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-primary"><ShieldCheck className="h-4 w-4" /></button>
-                    {canManage && <button title="إعادة تعيين كلمة المرور" onClick={() => doReset(u)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"><KeyRound className="h-4 w-4" /></button>}
+                    {canManage && <button title="تغيير كلمة المرور" onClick={() => setPwdUser(u)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-primary"><Lock className="h-4 w-4" /></button>}
+                    {canManage && <button title="إنشاء رابط إعادة التعيين" onClick={() => doReset(u)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground"><KeyRound className="h-4 w-4" /></button>}
                     {canManage && (u.isActive
                       ? <button title="تعطيل" onClick={() => doAction(() => disableUser(u.id), "تم التعطيل")} className="h-8 w-8 inline-flex items-center justify-center text-destructive hover:text-destructive/80"><Ban className="h-4 w-4" /></button>
                       : <button title="تفعيل" onClick={() => doAction(() => enableUser(u.id), "تم التفعيل")} className="h-8 w-8 inline-flex items-center justify-center text-green-600 hover:text-green-700"><CheckCircle2 className="h-4 w-4" /></button>)}
@@ -170,7 +172,45 @@ function UsersInner() {
           onClose={() => setAccessUser(null)} onRefresh={async () => { setAccessUser(await getUser(accessUser.id)); await load(); }}
         />
       )}
+      {pwdUser && <ChangePasswordDialog user={pwdUser} onClose={() => setPwdUser(null)} />}
     </div>
+  );
+}
+
+function ChangePasswordDialog({ user, onClose }: { user: UserListItem; onClose: () => void }) {
+  const [pwd, setPwd] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit() {
+    if (pwd.length < 6) { toast.error("كلمة المرور يجب ألا تقل عن 6 أحرف"); return; }
+    if (pwd !== confirm) { toast.error("كلمتا المرور غير متطابقتين"); return; }
+    setSaving(true);
+    try { await setPassword(user.id, pwd); toast.success("تم تغيير كلمة المرور بنجاح"); onClose(); }
+    catch (err) { notifyError(err, "تعذر تغيير كلمة المرور"); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => { if (!o && !saving) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader><DialogTitle>تغيير كلمة المرور — {user.fullName || user.email}</DialogTitle></DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">كلمة المرور الجديدة</label>
+            <Input type="password" value={pwd} onChange={(e) => setPwd(e.target.value)} className="bg-secondary border-border" />
+          </div>
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">تأكيد كلمة المرور</label>
+            <Input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="bg-secondary border-border" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>إلغاء</Button>
+          <Button onClick={submit} disabled={saving}>{saving && <Loader2 className="h-4 w-4 animate-spin" />} حفظ</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
