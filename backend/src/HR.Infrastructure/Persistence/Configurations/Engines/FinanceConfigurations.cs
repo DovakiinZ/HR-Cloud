@@ -232,6 +232,22 @@ public class PayrollPayslipConfiguration : IEntityTypeConfiguration<PayrollPaysl
     }
 }
 
+public class PayrollExportJobConfiguration : IEntityTypeConfiguration<PayrollExportJob>
+{
+    public void Configure(EntityTypeBuilder<PayrollExportJob> builder)
+    {
+        builder.ToTable("engine_payroll_export_jobs");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Kind).HasMaxLength(100).IsRequired();
+        builder.Property(x => x.Format).HasMaxLength(20).IsRequired();
+        builder.Property(x => x.FileName).HasMaxLength(300);
+        builder.Property(x => x.Error).HasMaxLength(2000);
+
+        builder.HasIndex(x => x.TenantId);
+        builder.HasIndex(x => x.PayrollRunId);
+    }
+}
+
 public class PayrollRunTransitionConfiguration : IEntityTypeConfiguration<PayrollRunTransition>
 {
     public void Configure(EntityTypeBuilder<PayrollRunTransition> builder)
