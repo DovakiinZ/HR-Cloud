@@ -46,7 +46,8 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             .Where(t => t.Code == PayslipTemplateCode).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
     }
 
-    // Bilingual labels for the standard seeded components; anything else falls back to its component code.
+    // Bilingual labels for the standard/rule component codes. Transaction-type components resolve from
+    // master data (see BuildLabelsAsync); this map covers rule outputs that aren't master-data items.
     private static readonly IReadOnlyDictionary<string, string> StandardLabels =
         new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -54,13 +55,23 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             ["HOUSING"] = "بدل السكن",
             ["TRANSPORT"] = "بدل النقل",
             ["TRANSPORTATION"] = "بدل النقل",
-            ["GOSI"] = "التأمينات الاجتماعية",
+            ["ALLOWANCES"] = "البدلات",
+            ["MOBILE"] = "بدل الجوال",
+            ["FOOD"] = "بدل الطعام",
+            ["ADDITIONS"] = "إضافات أخرى",
+            ["BONUS"] = "مكافأة",
+            ["COMMISSION"] = "عمولة",
             ["OVERTIME"] = "العمل الإضافي",
+            ["GOSI"] = "التأمينات الاجتماعية (GOSI)",
+            ["DEDUCTIONS"] = "استقطاعات أخرى",
+            ["ATTENDANCE_DED"] = "خصومات الحضور",
+            ["LOAN"] = "قسط قرض",
+            ["ADVANCE"] = "سلفة",
             ["LATE"] = "خصم التأخير",
             ["SHORTAGE"] = "خصم النقص",
             ["ABSENCE"] = "خصم الغياب",
-            ["ADDITIONS"] = "إضافات",
-            ["DEDUCTIONS"] = "استقطاعات",
+            ["PENALTY"] = "غرامة",
+            ["EOS"] = "مكافأة نهاية الخدمة",
         };
 
     public async Task<PayslipPdf> RenderAsync(Guid runId, Guid employeeId, bool archive, CancellationToken ct = default)
@@ -111,7 +122,7 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             ? await _db.MasterDataItems.AsNoTracking().Where(m => m.Id == pm).Select(m => m.NameAr).FirstOrDefaultAsync(ct) : null;
 
         var breakdown = PayslipComponentProjection.Project(payslip.ComponentsJson);
-        var labels = BuildLabels(breakdown);
+        var labels = await BuildLabelsAsync(breakdown, ct);
 
         var ctx = new PayslipTokenContext(
             EmployeeName: payslip.EmployeeName, EmployeeNumber: payslip.EmployeeNumber,
@@ -141,12 +152,26 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             PayslipLabels: labels);
     }
 
-    private static Dictionary<string, string> BuildLabels(PayslipBreakdown b)
+    /// <summary>Resolve a bilingual label for every component: prefer the real type name from master data
+    /// (custom additions/deductions), then the built-in standard map (rule outputs), then the raw code.</summary>
+    private async Task<Dictionary<string, string>> BuildLabelsAsync(PayslipBreakdown b, CancellationToken ct)
     {
+        var codes = b.Earnings.Concat(b.Deductions).Select(l => l.ComponentCode).Distinct().ToList();
+
+        var md = (await _db.MasterDataItems.AsNoTracking()
+                .Where(m => codes.Contains(m.Code))
+                .Select(m => new { m.Code, m.NameAr, m.NameEn })
+                .ToListAsync(ct))
+            .ToDictionary(m => m.Code, m => string.IsNullOrWhiteSpace(m.NameAr) ? m.NameEn : m.NameAr,
+                StringComparer.OrdinalIgnoreCase);
+
         var labels = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var line in b.Earnings.Concat(b.Deductions))
-            if (StandardLabels.TryGetValue(line.ComponentCode, out var lbl))
-                labels[line.ComponentCode] = lbl;
+        foreach (var code in codes)
+        {
+            if (md.TryGetValue(code, out var name) && !string.IsNullOrWhiteSpace(name)) labels[code] = name;
+            else if (StandardLabels.TryGetValue(code, out var lbl)) labels[code] = lbl;
+            // else: leave unmapped — the renderer falls back to the component code.
+        }
         return labels;
     }
 
