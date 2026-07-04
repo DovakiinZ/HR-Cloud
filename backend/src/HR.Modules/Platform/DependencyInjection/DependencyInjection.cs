@@ -91,6 +91,12 @@ public static class DependencyInjection
         // Payroll module depends on the abstraction, not on Platform.
         services.AddScoped<HR.Application.Engines.Finance.IPayslipDocumentService,
             HR.Modules.Platform.Services.Documents.PayslipDocumentService>();
+        // Printable loan/expense documents. Interfaces live in HR.Application so the Loans/Expenses
+        // modules depend on the abstraction, not on Platform (same pattern as the payslip service).
+        services.AddScoped<HR.Application.Engines.Documents.ILoanDocumentService,
+            HR.Modules.Platform.Services.Documents.LoanDocumentService>();
+        services.AddScoped<HR.Application.Engines.Documents.IExpenseDocumentService,
+            HR.Modules.Platform.Services.Documents.ExpenseDocumentService>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IPageTemplateSeeder,
             HR.Modules.Platform.Services.Documents.PageTemplateSeeder>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentLibrarySeeder,

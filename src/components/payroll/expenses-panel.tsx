@@ -4,6 +4,15 @@ import { useCallback, useEffect, useState } from "react";
 import { Loader2, Receipt } from "lucide-react";
 import { ExpenseRecord, getExpenses } from "@/lib/api/expenses";
 import { AddExpenseDialog } from "./add-expense-dialog";
+import { ExpenseRowActions } from "./expense-row-actions";
+
+const EXPENSE_STATUS: Record<string, { label: string; cls: string }> = {
+  Approved: { label: "معتمد", cls: "border-green-500/30 bg-green-500/10 text-green-400" },
+  Paid: { label: "مدفوع", cls: "border-blue-500/30 bg-blue-500/10 text-blue-400" },
+  Pending: { label: "قيد الاعتماد", cls: "border-amber-500/30 bg-amber-500/10 text-amber-400" },
+  Rejected: { label: "مرفوض", cls: "border-destructive/30 bg-destructive/10 text-destructive" },
+  Cancelled: { label: "ملغى", cls: "border-destructive/30 bg-destructive/10 text-destructive" },
+};
 
 /// <summary>Expenses list (manual entries + approved expense claims). Reused by the standalone /expenses
 /// route and the Payroll Run page's "expenses" tab.</summary>
@@ -35,7 +44,7 @@ export function ExpensesPanel() {
       <div className="overflow-x-auto border border-border bg-card">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-border text-right text-xs text-muted-foreground">
-            <Th>الموظف</Th><Th>الفئة</Th><Th>المبلغ</Th><Th>الوصف</Th><Th>الرواتب</Th><Th>الحالة</Th><Th>التاريخ</Th>
+            <Th>الموظف</Th><Th>الفئة</Th><Th>المبلغ</Th><Th>الوصف</Th><Th>الرواتب</Th><Th>الحالة</Th><Th>التاريخ</Th><Th></Th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -49,8 +58,9 @@ export function ExpensesPanel() {
                     ? <span className="border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">{r.payrollMonth?.slice(0, 7) ?? "نعم"}</span>
                     : <span className="text-xs text-muted-foreground">—</span>}
                 </Td>
-                <Td><span className="border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">{r.status}</span></Td>
+                <Td><span className={`border px-2 py-0.5 text-xs ${EXPENSE_STATUS[r.status]?.cls ?? "border-border text-muted-foreground"}`}>{EXPENSE_STATUS[r.status]?.label ?? r.status}</span></Td>
                 <Td className="text-muted-foreground">{r.decidedAt?.slice(0, 10)}</Td>
+                <Td><ExpenseRowActions expense={r} onChanged={load} /></Td>
               </tr>
             ))}
           </tbody>
@@ -65,5 +75,5 @@ function Center({ children }: { children: React.ReactNode }) { return <div class
 function Empty({ icon: Icon, text }: { icon: React.ElementType; text: string }) {
   return <div className="flex flex-col items-center justify-center border border-dashed border-border p-12 text-center"><Icon className="mb-3 h-10 w-10 text-muted-foreground" /><p className="text-sm text-muted-foreground">{text}</p></div>;
 }
-function Th({ children }: { children: React.ReactNode }) { return <th className="px-4 py-2 font-medium">{children}</th>; }
+function Th({ children }: { children?: React.ReactNode }) { return <th className="px-4 py-2 font-medium">{children}</th>; }
 function Td({ children, className }: { children: React.ReactNode; className?: string }) { return <td className={`px-4 py-2 ${className ?? ""}`}>{children}</td>; }

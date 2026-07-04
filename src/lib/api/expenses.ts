@@ -1,4 +1,5 @@
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
 
 export interface ExpenseRecord {
   id: string;
@@ -43,3 +44,38 @@ export const createExpense = (input: CreateExpenseInput) =>
       payrollMonth: input.payrollMonth ?? null,
     },
   });
+
+// Cancel an expense — removes it from payroll inclusion.
+export const cancelExpense = (id: string) =>
+  apiFetch<ExpenseRecord>(`/api/expenses/${id}/cancel`, { method: "POST" });
+
+async function fetchExpenseBlob(id: string, mode: "pdf" | "download"): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/expenses/${id}/${mode}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("تعذر تحميل المستند");
+  return res.blob();
+}
+
+/** Open the expense document PDF in a new tab (optionally invoking the print dialog). */
+export async function viewExpenseDoc(id: string, print = false): Promise<void> {
+  const blob = await fetchExpenseBlob(id, "pdf");
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win && print) win.addEventListener("load", () => win.print());
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Download the expense document PDF as an attachment. */
+export async function downloadExpenseDoc(id: string): Promise<void> {
+  const blob = await fetchExpenseBlob(id, "download");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `expense-${id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
