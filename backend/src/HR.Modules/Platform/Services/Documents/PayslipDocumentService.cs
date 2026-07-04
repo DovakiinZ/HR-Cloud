@@ -66,6 +66,7 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             ["DEDUCTIONS"] = "استقطاعات أخرى",
             ["ATTENDANCE_DED"] = "خصومات الحضور",
             ["LOAN"] = "قسط قرض",
+            ["EXPENSE"] = "مصروفات مستردة",
             ["ADVANCE"] = "سلفة",
             ["LATE"] = "خصم التأخير",
             ["SHORTAGE"] = "خصم النقص",

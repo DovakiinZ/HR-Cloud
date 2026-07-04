@@ -91,6 +91,28 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
         var addByEmp = additions.GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
         var dedByEmp = deductions.GroupBy(a => a.EmployeeId).ToDictionary(g => g.Key, g => g.Sum(x => x.Amount));
 
+        // Loan installments DUE in this period (unpaid, active loan) → a LOAN deduction line on the payslip.
+        // Period-bound by DueMonth so a run never double-deducts the same installment across periods.
+        var loanByEmp = (await _db.LoanInstallments.AsNoTracking()
+            .Join(_db.Loans.AsNoTracking(), i => i.LoanId, l => l.Id,
+                (i, l) => new { l.EmployeeId, i.DueMonth, i.Amount, i.Paid, l.Status })
+            .Where(x => empIds.Contains(x.EmployeeId) && !x.Paid && x.Status == "Active"
+                        && x.DueMonth >= period.Start && x.DueMonth <= period.End)
+            .GroupBy(x => x.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Total = g.Sum(x => x.Amount) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.EmployeeId, x => x.Total);
+
+        // Approved expenses DECIDED in this period → an EXPENSE reimbursement (earning) line on the payslip.
+        var expEnd = period.End.AddDays(1);
+        var expenseByEmp = (await _db.Expenses.AsNoTracking()
+            .Where(e => empIds.Contains(e.EmployeeId) && e.Status == "Approved"
+                        && e.DecidedAt >= period.Start && e.DecidedAt < expEnd)
+            .GroupBy(e => e.EmployeeId)
+            .Select(g => new { EmployeeId = g.Key, Total = g.Sum(e => e.Amount) })
+            .ToListAsync(ct))
+            .ToDictionary(x => x.EmployeeId, x => x.Total);
+
         var inputs = new List<EmployeePayrollInput>(employees.Count);
         foreach (var e in employees)
         {
@@ -129,6 +151,8 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
                 ["GosiBase"] = e.BasicSalary + gosiAllowanceBase,
                 ["TotalAdditions"] = totalAdditions,
                 ["TotalDeductions"] = totalDeductions,
+                ["LoanInstallment"] = loanByEmp.TryGetValue(e.Id, out var loanDue) ? loanDue : 0m,
+                ["ExpenseReimbursement"] = expenseByEmp.TryGetValue(e.Id, out var expDue) ? expDue : 0m,
                 // Effective GOSI rate: employee override → tenant default, or 0 when disabled for the employee.
                 ["GosiRate"] = HR.Domain.Engines.Finance.GosiCalculation.EffectiveRate(e.GosiEnabled, e.GosiRateOverride, gosiRate),
                 ["WorkedDays"] = att?.Days ?? 0,

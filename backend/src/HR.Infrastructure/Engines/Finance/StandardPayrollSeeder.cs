@@ -30,7 +30,9 @@ public sealed class StandardPayrollSeeder : IStandardPayrollSeeder
         new("BASIC", "الراتب الأساسي", PayComponentKind.Earning, "BasicSalary"),
         new("ALLOWANCES", "البدلات", PayComponentKind.Earning, "TotalAllowances"),
         new("ADDITIONS", "الإضافات", PayComponentKind.Earning, "TotalAdditions"),
+        new("EXPENSE", "مصروفات مستردة", PayComponentKind.Earning, "ExpenseReimbursement"),
         new("GOSI", "التأمينات الاجتماعية", PayComponentKind.Deduction, "ROUND(PERCENT(GosiBase, GosiRate), 2)"),
+        new("LOAN", "قسط قرض", PayComponentKind.Deduction, "LoanInstallment"),
         new("DEDUCTIONS", "الاستقطاعات", PayComponentKind.Deduction, "TotalDeductions"),
     };
 
