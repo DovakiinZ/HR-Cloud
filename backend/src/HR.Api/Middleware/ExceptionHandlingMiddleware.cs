@@ -37,6 +37,9 @@ public class ExceptionHandlingMiddleware
                 (object)ApiResponse.Fail("Validation failed", validationEx.Errors.SelectMany(e => e.Value).ToList())),
             NotFoundException => (StatusCodes.Status404NotFound,
                 (object)ApiResponse.Fail(exception.Message)),
+            // BCL KeyNotFoundException (e.g. a payslip/entity lookup that found nothing) is a 404, not a crash.
+            KeyNotFoundException => (StatusCodes.Status404NotFound,
+                (object)ApiResponse.Fail(exception.Message)),
             ForbiddenException => (StatusCodes.Status403Forbidden,
                 (object)ApiResponse.Fail(exception.Message)),
             ConflictException => (StatusCodes.Status409Conflict,

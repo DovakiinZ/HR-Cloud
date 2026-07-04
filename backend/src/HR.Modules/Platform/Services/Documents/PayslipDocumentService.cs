@@ -22,10 +22,28 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
     private readonly ApplicationDbContext _db;
     private readonly IDocumentRenderer _renderer;
     private readonly ICurrentUserService _user;
+    private readonly IPageTemplateSeeder _pageSeeder;
+    private readonly IDocumentLibrarySeeder _libSeeder;
 
-    public PayslipDocumentService(ApplicationDbContext db, IDocumentRenderer renderer, ICurrentUserService user)
+    public PayslipDocumentService(ApplicationDbContext db, IDocumentRenderer renderer, ICurrentUserService user,
+        IPageTemplateSeeder pageSeeder, IDocumentLibrarySeeder libSeeder)
     {
-        _db = db; _renderer = renderer; _user = user;
+        _db = db; _renderer = renderer; _user = user; _pageSeeder = pageSeeder; _libSeeder = libSeeder;
+    }
+
+    /// <summary>Resolve the DOC_PAYSLIP template id, lazily seeding the document library on first use so
+    /// payslips work out-of-the-box (no manual seed) and never write a GeneratedDocument with an invalid
+    /// template FK.</summary>
+    private async Task<Guid?> EnsurePayslipTemplateIdAsync(CancellationToken ct)
+    {
+        var id = await _db.DocumentTemplates.AsNoTracking()
+            .Where(t => t.Code == PayslipTemplateCode).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+        if (id is not null) return id;
+
+        var pageId = await _pageSeeder.SeedAsync(ct);
+        await _libSeeder.SeedAsync(pageId, ct);
+        return await _db.DocumentTemplates.AsNoTracking()
+            .Where(t => t.Code == PayslipTemplateCode).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
     }
 
     // Bilingual labels for the standard seeded components; anything else falls back to its component code.
@@ -109,8 +127,7 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             CompanyWebsite: company?.Website, CompanyAddress: company?.Address);
 
         var tokens = PayslipTokens.Build(ctx);
-        var templateId = await _db.DocumentTemplates.AsNoTracking()
-            .Where(t => t.Code == PayslipTemplateCode).Select(t => (Guid?)t.Id).FirstOrDefaultAsync(ct);
+        var templateId = await EnsurePayslipTemplateIdAsync(ct);
 
         return new DocumentRenderRequest(
             TemplateId: templateId,
@@ -135,6 +152,11 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
 
     private async Task ArchiveAsync(PayrollPayslip payslip, Guid? templateId, byte[] pdf, string fileName, CancellationToken ct)
     {
+        // GeneratedDocument.DocumentTemplateId is a required FK — never persist an archive record without a
+        // real template (would violate the FK → 500). EnsurePayslipTemplateIdAsync makes this effectively
+        // always set; this guard is defense-in-depth.
+        if (templateId is not { } tid) return;
+
         var stored = new StoredFile
         {
             TenantId = _user.TenantId,
@@ -153,7 +175,7 @@ public sealed class PayslipDocumentService : IPayslipDocumentService
             doc = new GeneratedDocument { EntityType = EntityType, EntityId = payslip.Id };
             _db.Set<GeneratedDocument>().Add(doc);
         }
-        doc.DocumentTemplateId = templateId ?? Guid.Empty;
+        doc.DocumentTemplateId = tid;
         doc.Status = DocumentGenerationStatus.Completed;
         doc.OutputFormat = DocumentOutputFormat.Pdf;
         doc.FileUrl = $"/api/files/{stored.Id}";

@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Loader2, Search } from "lucide-react";
+import { Loader2, Search, Eye, Printer } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { ApiError } from "@/lib/api-client";
-import { getRunEmployees, money, type RunEmployeeRow, type Paged } from "@/lib/api/payroll";
+import { usePermissions } from "@/lib/permissions";
+import { getRunEmployees, viewPayslip, money, type RunEmployeeRow, type Paged } from "@/lib/api/payroll";
 
 function notifyError(err: unknown, fallback: string) {
   if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
@@ -23,11 +24,25 @@ interface RunEmployeesTableProps {
 const PAGE_SIZE = 20;
 
 export function RunEmployeesTable({ runId, currency }: RunEmployeesTableProps) {
+  const { has } = usePermissions();
+  const canView = has("Payroll.Payslip.View");
+  const canPrint = has("Payroll.Payslip.Print");
+  const showPayslip = canView || canPrint;
+  const cols = showPayslip ? 6 : 5;
+
   const [data, setData] = useState<Paged<RunEmployeeRow> | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function openPayslip(employeeId: string, print: boolean) {
+    setBusyId(employeeId);
+    try { await viewPayslip(runId, employeeId, print); }
+    catch (err) { notifyError(err, "تعذر فتح قسيمة الراتب"); }
+    finally { setBusyId(null); }
+  }
 
   // Debounce search
   useEffect(() => {
@@ -76,7 +91,7 @@ export function RunEmployeesTable({ runId, currency }: RunEmployeesTableProps) {
         <Table>
           <TableHeader>
             <TableRow className="border-border hover:bg-transparent">
-              {["الموظف", "الإجمالي", "الاستقطاعات", "الصافي", "حالة الترحيل"].map((h, i) => (
+              {["الموظف", "الإجمالي", "الاستقطاعات", "الصافي", "حالة الترحيل", ...(showPayslip ? ["القسيمة"] : [])].map((h, i) => (
                 <TableHead key={i} className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   {h}
                 </TableHead>
@@ -86,13 +101,13 @@ export function RunEmployeesTable({ runId, currency }: RunEmployeesTableProps) {
           <TableBody>
             {loading ? (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={cols} className="py-12 text-center text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin inline" /> جاري التحميل...
                 </TableCell>
               </TableRow>
             ) : !data || data.items.length === 0 ? (
               <TableRow className="hover:bg-transparent">
-                <TableCell colSpan={5} className="py-12 text-center text-sm text-muted-foreground">
+                <TableCell colSpan={cols} className="py-12 text-center text-sm text-muted-foreground">
                   لا توجد سجلات
                 </TableCell>
               </TableRow>
@@ -112,6 +127,24 @@ export function RunEmployeesTable({ runId, currency }: RunEmployeesTableProps) {
                     <span className="text-xs text-muted-foreground">غير مُرحَّل</span>
                   )}
                 </TableCell>
+                {showPayslip && (
+                  <TableCell>
+                    <div className="flex items-center gap-1">
+                      {canView && (
+                        <Button variant="ghost" size="sm" title="عرض القسيمة" disabled={busyId === row.employeeId}
+                          onClick={() => openPayslip(row.employeeId, false)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      )}
+                      {canPrint && (
+                        <Button variant="ghost" size="sm" title="طباعة القسيمة" disabled={busyId === row.employeeId}
+                          onClick={() => openPayslip(row.employeeId, true)}>
+                          <Printer className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </TableCell>
+                )}
               </TableRow>
             ))}
           </TableBody>
