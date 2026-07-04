@@ -1,5 +1,6 @@
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Documents;
 using HR.Domain.Engines.Loans;
 using HR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -17,7 +18,12 @@ public class LoansController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
-    public LoansController(ApplicationDbContext db, ICurrentUserService user) { _db = db; _user = user; }
+    private readonly ILoanDocumentService _docs;
+    public LoansController(ApplicationDbContext db, ICurrentUserService user, ILoanDocumentService docs)
+    { _db = db; _user = user; _docs = docs; }
+
+    private bool CanView() => _user.Permissions.Contains("Loans.View") || _user.Permissions.Contains("Payroll.View") || _user.Permissions.Contains("Employees.View");
+    private bool CanManage() => _user.Permissions.Contains("Loans.Approve") || _user.Permissions.Contains("Payroll.Create") || _user.Permissions.Contains("Payroll.Edit");
 
     public sealed class LoanDto
     {
@@ -144,5 +150,69 @@ public class LoansController : ControllerBase
                 .Select(i => new InstallmentDto { DueMonth = i.DueMonth, Amount = i.Amount, Paid = i.Paid }).ToList(),
         };
         return Ok(ApiResponse<LoanDto>.Ok(dto));
+    }
+
+    /// <summary>Printable loan/advance document (branded PDF, opened inline).</summary>
+    [HttpGet("{id:guid}/pdf")]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        if (!CanView()) return Forbid();
+        if (!await _db.Loans.AnyAsync(l => l.Id == id, ct)) return NotFound();
+        var doc = await _docs.RenderAsync(id, ct);
+        return File(doc.Pdf, "application/pdf");
+    }
+
+    /// <summary>Download the loan/advance document as an attachment.</summary>
+    [HttpGet("{id:guid}/download")]
+    public async Task<IActionResult> Download(Guid id, CancellationToken ct)
+    {
+        if (!CanView()) return Forbid();
+        if (!await _db.Loans.AnyAsync(l => l.Id == id, ct)) return NotFound();
+        var doc = await _docs.RenderAsync(id, ct);
+        return File(doc.Pdf, "application/pdf", doc.FileName);
+    }
+
+    /// <summary>Cancel (void) a loan/advance — stops deduction of the remaining installments.</summary>
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult<ApiResponse<LoanDto>>> Cancel(Guid id, CancellationToken ct)
+    {
+        if (!CanManage()) return Forbid();
+        var loan = await _db.Loans.Include(l => l.Installments).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (loan is null) return NotFound(ApiResponse<LoanDto>.Fail("القرض غير موجود"));
+        loan.Status = "Cancelled";
+        await _db.SaveChangesAsync(ct);
+        return Ok(ApiResponse<LoanDto>.Ok(await MapAsync(loan, ct)));
+    }
+
+    /// <summary>Settle (تسوية) a loan/advance — marks it paid off, marking all remaining installments paid
+    /// and stopping further deductions.</summary>
+    [HttpPost("{id:guid}/settle")]
+    public async Task<ActionResult<ApiResponse<LoanDto>>> Settle(Guid id, CancellationToken ct)
+    {
+        if (!CanManage()) return Forbid();
+        var loan = await _db.Loans.Include(l => l.Installments).FirstOrDefaultAsync(l => l.Id == id, ct);
+        if (loan is null) return NotFound(ApiResponse<LoanDto>.Fail("القرض غير موجود"));
+        loan.Status = "Settled";
+        foreach (var i in loan.Installments) i.Paid = true;
+        await _db.SaveChangesAsync(ct);
+        return Ok(ApiResponse<LoanDto>.Ok(await MapAsync(loan, ct)));
+    }
+
+    private async Task<LoanDto> MapAsync(Loan loan, CancellationToken ct)
+    {
+        var name = await _db.Employees.AsNoTracking().Where(e => e.Id == loan.EmployeeId)
+            .Select(e => (e.FirstNameAr ?? e.FirstName) + " " + (e.LastNameAr ?? e.LastName)).FirstOrDefaultAsync(ct);
+        var typeName = loan.LoanTypeId is { } tid
+            ? await _db.MasterDataItems.AsNoTracking().Where(m => m.Id == tid).Select(m => m.NameAr).FirstOrDefaultAsync(ct)
+            : null;
+        return new LoanDto
+        {
+            Id = loan.Id, EmployeeId = loan.EmployeeId, EmployeeName = name,
+            LoanType = typeName, Kind = loan.Kind, Principal = loan.Principal,
+            InstallmentMonths = loan.InstallmentMonths, MonthlyInstallment = loan.MonthlyInstallment,
+            Status = loan.Status, StartDate = loan.StartDate,
+            Installments = loan.Installments.OrderBy(i => i.DueMonth)
+                .Select(i => new InstallmentDto { DueMonth = i.DueMonth, Amount = i.Amount, Paid = i.Paid }).ToList(),
+        };
     }
 }

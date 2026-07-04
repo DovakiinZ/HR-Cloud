@@ -4,6 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import { HandCoins, Loader2 } from "lucide-react";
 import { getLoans, LoanRecord } from "@/lib/api/loans";
 import { AddLoanDialog } from "./add-loan-dialog";
+import { LoanRowActions } from "./loan-row-actions";
+
+const LOAN_STATUS: Record<string, { label: string; cls: string }> = {
+  Active: { label: "نشط", cls: "border-green-500/30 bg-green-500/10 text-green-400" },
+  Settled: { label: "مُسوّاة", cls: "border-blue-500/30 bg-blue-500/10 text-blue-400" },
+  Cancelled: { label: "ملغاة", cls: "border-destructive/30 bg-destructive/10 text-destructive" },
+};
 
 /// <summary>Loans & advances list (installment schedules). Manual entries + records created when
 /// loan/advance requests are approved. Reused by the standalone /loans route and the Payroll Run page.</summary>
@@ -34,19 +41,20 @@ export function LoansPanel() {
       <div className="space-y-2">
       {rows.map((l) => (
         <div key={l.id} className="border border-border bg-card">
-          <button onClick={() => setOpen(open === l.id ? null : l.id)} className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-right hover:bg-muted/30">
-            <div className="flex items-center gap-3">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3">
+            <button onClick={() => setOpen(open === l.id ? null : l.id)} className="flex flex-1 items-center gap-3 text-right hover:opacity-80">
               <HandCoins className="h-5 w-5 text-primary" />
               <div>
                 <div className="font-medium">{l.employeeName ?? "—"} <span className="text-xs text-muted-foreground">· {l.kind === "Advance" ? "سلفة" : "قرض"}{l.loanType ? ` · ${l.loanType}` : ""}</span></div>
                 <div className="text-xs text-muted-foreground">{l.installmentMonths} قسط × {money(l.monthlyInstallment)}</div>
               </div>
-            </div>
+            </button>
             <div className="flex items-center gap-3">
               <span className="font-bold tabular-nums">{money(l.principal)}</span>
-              <span className="border border-border px-2 py-0.5 text-xs text-muted-foreground">{l.status}</span>
+              <span className={`border px-2 py-0.5 text-xs ${LOAN_STATUS[l.status]?.cls ?? "border-border text-muted-foreground"}`}>{LOAN_STATUS[l.status]?.label ?? l.status}</span>
+              <LoanRowActions loan={l} onChanged={load} />
             </div>
-          </button>
+          </div>
           {open === l.id && l.installments.length > 0 && (
             <div className="border-t border-border bg-secondary/30 px-4 py-3">
               <table className="w-full text-sm">

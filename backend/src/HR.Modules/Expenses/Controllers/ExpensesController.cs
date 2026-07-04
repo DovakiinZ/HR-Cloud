@@ -1,5 +1,6 @@
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Documents;
 using HR.Domain.Engines.Expenses;
 using HR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
@@ -16,7 +17,12 @@ public class ExpensesController : ControllerBase
 {
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
-    public ExpensesController(ApplicationDbContext db, ICurrentUserService user) { _db = db; _user = user; }
+    private readonly IExpenseDocumentService _docs;
+    public ExpensesController(ApplicationDbContext db, ICurrentUserService user, IExpenseDocumentService docs)
+    { _db = db; _user = user; _docs = docs; }
+
+    private bool CanView() => _user.Permissions.Contains("Expenses.View") || _user.Permissions.Contains("Payroll.View") || _user.Permissions.Contains("Employees.View");
+    private bool CanManage() => _user.Permissions.Contains("Expenses.Approve") || _user.Permissions.Contains("Payroll.Create") || _user.Permissions.Contains("Payroll.Edit");
 
     public sealed class ExpenseDto
     {
@@ -141,6 +147,53 @@ public class ExpensesController : ControllerBase
             Amount = expense.Amount, Currency = expense.Currency, Description = expense.Description,
             ReceiptUrl = expense.ReceiptUrl, Status = expense.Status, DecidedAt = expense.DecidedAt,
             IncludeInPayroll = expense.IncludeInPayroll, PayrollMonth = expense.PayrollMonth,
+        };
+        return Ok(ApiResponse<ExpenseDto>.Ok(dto));
+    }
+
+    /// <summary>Printable expense document (branded PDF, opened inline).</summary>
+    [HttpGet("{id:guid}/pdf")]
+    public async Task<IActionResult> Pdf(Guid id, CancellationToken ct)
+    {
+        if (!CanView()) return Forbid();
+        if (!await _db.Expenses.AnyAsync(e => e.Id == id, ct)) return NotFound();
+        var doc = await _docs.RenderAsync(id, ct);
+        return File(doc.Pdf, "application/pdf");
+    }
+
+    /// <summary>Download the expense document as an attachment.</summary>
+    [HttpGet("{id:guid}/download")]
+    public async Task<IActionResult> Download(Guid id, CancellationToken ct)
+    {
+        if (!CanView()) return Forbid();
+        if (!await _db.Expenses.AnyAsync(e => e.Id == id, ct)) return NotFound();
+        var doc = await _docs.RenderAsync(id, ct);
+        return File(doc.Pdf, "application/pdf", doc.FileName);
+    }
+
+    /// <summary>Cancel an expense — removes it from payroll inclusion.</summary>
+    [HttpPost("{id:guid}/cancel")]
+    public async Task<ActionResult<ApiResponse<ExpenseDto>>> Cancel(Guid id, CancellationToken ct)
+    {
+        if (!CanManage()) return Forbid();
+        var exp = await _db.Expenses.FirstOrDefaultAsync(e => e.Id == id, ct);
+        if (exp is null) return NotFound(ApiResponse<ExpenseDto>.Fail("المصروف غير موجود"));
+        exp.Status = "Cancelled";
+        exp.IncludeInPayroll = false;
+        await _db.SaveChangesAsync(ct);
+
+        var emp = await _db.Employees.AsNoTracking().FirstOrDefaultAsync(e => e.Id == exp.EmployeeId, ct);
+        var categoryName = exp.ExpenseCategoryId is { } cid
+            ? await _db.MasterDataItems.AsNoTracking().Where(m => m.Id == cid).Select(m => m.NameAr).FirstOrDefaultAsync(ct)
+            : null;
+        var dto = new ExpenseDto
+        {
+            Id = exp.Id, EmployeeId = exp.EmployeeId,
+            EmployeeName = emp != null ? (emp.FirstNameAr ?? emp.FirstName) + " " + (emp.LastNameAr ?? emp.LastName) : null,
+            Category = categoryName,
+            Amount = exp.Amount, Currency = exp.Currency, Description = exp.Description,
+            ReceiptUrl = exp.ReceiptUrl, Status = exp.Status, DecidedAt = exp.DecidedAt,
+            IncludeInPayroll = exp.IncludeInPayroll, PayrollMonth = exp.PayrollMonth,
         };
         return Ok(ApiResponse<ExpenseDto>.Ok(dto));
     }
