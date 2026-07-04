@@ -129,7 +129,8 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
                 ["GosiBase"] = e.BasicSalary + gosiAllowanceBase,
                 ["TotalAdditions"] = totalAdditions,
                 ["TotalDeductions"] = totalDeductions,
-                ["GosiRate"] = gosiRate,
+                // Effective GOSI rate: employee override → tenant default, or 0 when disabled for the employee.
+                ["GosiRate"] = HR.Domain.Engines.Finance.GosiCalculation.EffectiveRate(e.GosiEnabled, e.GosiRateOverride, gosiRate),
                 ["WorkedDays"] = att?.Days ?? 0,
                 ["OvertimeHours"] = att is null ? 0m : Math.Round(att.OvertimeMinutes / 60m, 2),
                 // Attendance-driven deduction inputs (auto-computed from the attendance engine).

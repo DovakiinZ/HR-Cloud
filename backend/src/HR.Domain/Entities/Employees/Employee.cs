@@ -38,6 +38,12 @@ public class Employee : TenantEntity
     // Compensation & payment
     public decimal BasicSalary { get; set; }
     public string? Currency { get; set; } = "SAR";
+
+    /// <summary>Whether GOSI is deducted for this employee. Default true; toggling off makes GOSI 0.</summary>
+    public bool GosiEnabled { get; set; } = true;
+    /// <summary>Optional per-employee GOSI rate (%) that overrides the tenant default when set.</summary>
+    public decimal? GosiRateOverride { get; set; }
+
     public Guid? PaymentMethodId { get; set; }   // master-data PaymentMethod
     public Guid? BankId { get; set; }             // master-data Bank
     public string? BankName { get; set; }         // legacy free-text (kept; BankId is canonical)

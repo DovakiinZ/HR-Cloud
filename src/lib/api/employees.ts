@@ -100,6 +100,8 @@ export interface ApiEmployee {
   totalDeductions: number;
   gosiRate: number;
   gosiAmount: number;
+  gosiEnabled: boolean;
+  gosiRateOverride: number | null;
   grossSalary: number;
   netSalary: number;
   createdAt: string;
@@ -152,6 +154,8 @@ export interface EmployeeInput {
   emergencyContactPhone?: string;
   salary: number;
   currency?: string;
+  gosiEnabled?: boolean;
+  gosiRateOverride?: number | null;
   paymentMethodId?: string;
   bankId?: string;
   bankAccountNumber?: string;
@@ -242,6 +246,8 @@ function toPayload(input: EmployeeInput) {
     emergencyContactPhone: input.emergencyContactPhone || null,
     basicSalary: input.salary,
     currency: input.currency || "SAR",
+    gosiEnabled: input.gosiEnabled ?? true,
+    gosiRateOverride: input.gosiRateOverride ?? null,
     paymentMethodId: idOrNull(input.paymentMethodId),
     bankId: idOrNull(input.bankId),
     bankAccountNumber: input.bankAccountNumber || null,

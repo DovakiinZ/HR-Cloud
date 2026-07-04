@@ -66,7 +66,7 @@ function emptyInput(): EmployeeInput {
     nationalityId: "", jobTitleId: "", contractTypeId: "", employmentTypeId: "",
     departmentId: "", branchId: "", managerId: "", joinDate: "", status: "نشط",
     address: "", city: "", emergencyContactName: "", emergencyContactPhone: "",
-    salary: 0, currency: "SAR", paymentMethodId: "", bankId: "", bankAccountNumber: "",
+    salary: 0, currency: "SAR", gosiEnabled: true, gosiRateOverride: null, paymentMethodId: "", bankId: "", bankAccountNumber: "",
     iban: "", salaryCardNumber: "", cardProvider: "", workLocationId: "",
     leavePolicyId: "", payrollGroupId: "", photoUrl: "", notes: "", allowances: [], additions: [], deductions: [],
   };
@@ -87,6 +87,7 @@ function fromApi(a: ApiEmployee): EmployeeInput {
     address: a.address ?? "", city: a.city ?? "",
     emergencyContactName: a.emergencyContactName ?? "", emergencyContactPhone: a.emergencyContactPhone ?? "",
     salary: a.basicSalary, currency: a.currency ?? "SAR",
+    gosiEnabled: a.gosiEnabled ?? true, gosiRateOverride: a.gosiRateOverride ?? null,
     paymentMethodId: a.paymentMethodId ?? "", bankId: a.bankId ?? "",
     bankAccountNumber: a.bankAccountNumber ?? "", iban: a.iban ?? "",
     salaryCardNumber: a.salaryCardNumber ?? "", cardProvider: a.cardProvider ?? "",
@@ -300,6 +301,20 @@ export function EmployeeForm({ mode = "create", employeeId, initial }: Props) {
 
       <Section title="التعويضات والدفع">
         <Field label="الراتب الأساسي"><Input type="number" min={0} value={form.salary || ""} onChange={(e) => set("salary", Number(e.target.value))} className="bg-secondary border-border" /></Field>
+        <Field label="التأمينات الاجتماعية (GOSI)">
+          <label className="flex items-center gap-2 text-sm h-9">
+            <input type="checkbox" checked={form.gosiEnabled ?? true} onChange={(e) => set("gosiEnabled", e.target.checked)} className="h-4 w-4" />
+            <span>خاضع للتأمينات الاجتماعية</span>
+          </label>
+        </Field>
+        {(form.gosiEnabled ?? true) && (
+          <Field label="نسبة GOSI مخصّصة % (اختياري)">
+            <Input type="number" min={0} max={50} step="0.01" placeholder="افتراضي حسب إعدادات الرواتب"
+              value={form.gosiRateOverride ?? ""}
+              onChange={(e) => set("gosiRateOverride", e.target.value === "" ? null : Number(e.target.value))}
+              className="bg-secondary border-border" />
+          </Field>
+        )}
         <Field label="العملة"><Input value={form.currency} onChange={(e) => set("currency", e.target.value)} className="bg-secondary border-border" placeholder="SAR" /></Field>
         <Field label="طريقة الدفع"><LookupSelect value={form.paymentMethodId ?? ""} onChange={(v) => set("paymentMethodId", v)} items={paymentMethods} placeholder="— اختر —" /></Field>
         {paymentCode === "BANK_TRANSFER" && (<>

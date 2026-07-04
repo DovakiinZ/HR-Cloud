@@ -96,6 +96,8 @@ public class EmployeeDto
     public decimal TotalDeductions { get; set; }   // excludes GOSI
     public decimal GosiRate { get; set; }
     public decimal GosiAmount { get; set; }
+    public bool GosiEnabled { get; set; } = true;
+    public decimal? GosiRateOverride { get; set; }
     public decimal GrossSalary { get; set; }       // basic + allowances + additions
     public decimal NetSalary { get; set; }         // gross - deductions - gosi
 
