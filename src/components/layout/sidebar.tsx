@@ -16,7 +16,6 @@ import {
   LogOut,
   CheckSquare,
   ClipboardCheck,
-  GitCommitVertical,
 } from "lucide-react";
 import {
   Tooltip,
@@ -32,7 +31,6 @@ const navItems = [
   { label: "الموظفين", href: "/employees", icon: Users },
   { label: "الحضور", href: "/attendance", icon: Clock },
   { label: "الإجازات", href: "/leaves", icon: CalendarDays },
-  { label: "دفتر الاستحقاق", href: "/leaves/ledger", icon: GitCommitVertical },
   { label: "الرواتب", href: "/payroll", icon: Banknote },
   { label: "المهام", href: "/tasks", icon: CheckSquare },
   { label: "الطلبات", href: "/requests", icon: FileText },
