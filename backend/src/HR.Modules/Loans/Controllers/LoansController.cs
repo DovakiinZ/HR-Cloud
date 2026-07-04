@@ -74,6 +74,7 @@ public class LoansController : ControllerBase
         public string? Kind { get; set; }          // Loan | Advance
         public decimal Principal { get; set; }
         public int InstallmentMonths { get; set; }
+        public DateTime? StartMonth { get; set; }  // month the first installment is deducted; defaults to next month
     }
 
     /// <summary>Manually create a loan or salary advance assigned to any employee, generating its
@@ -105,6 +106,11 @@ public class LoansController : ControllerBase
         var months = Math.Max(1, body.InstallmentMonths);
         var monthly = Math.Round(body.Principal / months, 2);
 
+        // First installment month: the user-chosen start (1st of that month, UTC), or next month by default.
+        var firstMonth = body.StartMonth is { } sm
+            ? new DateTime(sm.Year, sm.Month, 1, 0, 0, 0, DateTimeKind.Utc)
+            : new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
+
         var loan = new Loan
         {
             EmployeeId = body.EmployeeId,
@@ -114,10 +120,9 @@ public class LoansController : ControllerBase
             InstallmentMonths = months,
             MonthlyInstallment = monthly,
             Status = "Active",
-            StartDate = DateTime.UtcNow,
+            StartDate = firstMonth,
         };
 
-        var firstMonth = new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(1);
         for (var i = 0; i < months; i++)
             loan.Installments.Add(new LoanInstallment { DueMonth = firstMonth.AddMonths(i), Amount = monthly, Paid = false });
 
