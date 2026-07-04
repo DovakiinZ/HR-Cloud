@@ -106,6 +106,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.CurrencyValidator>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.MissingAttendanceValidator>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.RuleConflictValidator>();
+        // SP9 — smart validation (duplicate / conflict / consistency)
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.DuplicateTransactionValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.ExcessiveDeductionValidator>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.ZeroGrossValidator>();
 
         return services;
     }
