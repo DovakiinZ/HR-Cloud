@@ -35,6 +35,8 @@ public record UpdateEmployeeCommand : IRequest<EmployeeDto>
     // Compensation & payment
     public decimal BasicSalary { get; init; }
     public string? Currency { get; init; }
+    public bool GosiEnabled { get; init; } = true;
+    public decimal? GosiRateOverride { get; init; }
     public Guid? PaymentMethodId { get; init; }
     public Guid? BankId { get; init; }
     public string? BankAccountNumber { get; init; }

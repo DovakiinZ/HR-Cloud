@@ -150,6 +150,8 @@ public static class EmployeeProjection
             EmergencyContactPhone = e.EmergencyContactPhone,
             BasicSalary = e.BasicSalary,
             Currency = e.Currency,
+            GosiEnabled = e.GosiEnabled,
+            GosiRateOverride = e.GosiRateOverride,
             PaymentMethodId = e.PaymentMethodId,
             PaymentMethod = En(e.PaymentMethodId),
             PaymentMethodAr = Ar(e.PaymentMethodId),
@@ -196,8 +198,11 @@ public static class EmployeeProjection
             dto.TotalAllowances = totalAllowances;
             dto.TotalAdditions = dto.Additions.Where(a => a.IsActive).Sum(a => a.Amount);
             dto.TotalDeductions = dto.Deductions.Where(a => a.IsActive).Sum(a => a.Amount);
-            dto.GosiRate = gosiRate;
-            dto.GosiAmount = Math.Round((dto.BasicSalary + gosiAllowanceBase) * gosiRate / 100m, 2);
+            // Effective GOSI rate: employee override → tenant default, or 0 when disabled for the employee.
+            var effectiveGosiRate = HR.Domain.Engines.Finance.GosiCalculation.EffectiveRate(
+                dto.GosiEnabled, dto.GosiRateOverride, gosiRate);
+            dto.GosiRate = effectiveGosiRate;
+            dto.GosiAmount = Math.Round((dto.BasicSalary + gosiAllowanceBase) * effectiveGosiRate / 100m, 2);
             dto.GrossSalary = dto.BasicSalary + dto.TotalAllowances + dto.TotalAdditions;
             dto.NetSalary = dto.GrossSalary - dto.TotalDeductions - dto.GosiAmount;
         }

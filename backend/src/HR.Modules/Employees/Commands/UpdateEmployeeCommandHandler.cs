@@ -55,6 +55,8 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
         employee.EmergencyContactPhone = request.EmergencyContactPhone;
         employee.BasicSalary = request.BasicSalary;
         employee.Currency = request.Currency ?? employee.Currency ?? "SAR";
+        employee.GosiEnabled = request.GosiEnabled;
+        employee.GosiRateOverride = request.GosiRateOverride;
         employee.PaymentMethodId = request.PaymentMethodId;
         employee.BankId = request.BankId;
         employee.BankAccountNumber = request.BankAccountNumber;
