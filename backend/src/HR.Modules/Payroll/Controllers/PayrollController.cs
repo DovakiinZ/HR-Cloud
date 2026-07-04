@@ -36,13 +36,15 @@ public class PayrollController : BaseApiController
     private readonly IAttendancePayrollSyncService _attendanceSync;
     private readonly IPayrollRunReadService _runRead;
     private readonly ICreateFromRunService _createFromRun;
+    private readonly IPayslipDocumentService _payslips;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
         IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync,
-        IPayrollRunReadService runRead, ICreateFromRunService createFromRun)
+        IPayrollRunReadService runRead, ICreateFromRunService createFromRun, IPayslipDocumentService payslips)
     {
+        _payslips = payslips;
         _db = db;
         _runEngine = runEngine;
         _previewEngine = previewEngine;
@@ -186,6 +188,64 @@ public class PayrollController : BaseApiController
             new Application.Engines.Finance.CreateFromRunRequest(
                 req.EmployeeId, req.Kind, req.TypeId, req.Amount, req.EffectiveDate, req.Notes), ct);
         return CreatedResponse(newId);
+    }
+
+    // ── Payslips (SP4) ──────────────────────────────────────────────────────────────
+
+    [HttpGet("runs/{id:guid}/payslips")]
+    [RequirePermission("Payroll.Payslip.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<PayslipRowDto>>>> RunPayslips(
+        Guid id, [FromQuery] PagedRequest request, CancellationToken ct)
+    {
+        var q = _db.PayrollPayslips.AsNoTracking().Where(p => p.PayrollRunId == id);
+        var total = await q.CountAsync(ct);
+        var page = Math.Max(1, request.Page);
+        var size = Math.Clamp(request.PageSize, 1, 200);
+        var items = await q.OrderBy(p => p.EmployeeName).Skip((page - 1) * size).Take(size)
+            .Select(p => new PayslipRowDto
+            {
+                EmployeeId = p.EmployeeId,
+                EmployeeNumber = p.EmployeeNumber,
+                EmployeeName = p.EmployeeName,
+                Currency = p.Currency,
+                GrossEarnings = p.GrossEarnings,
+                TotalDeductions = p.TotalDeductions,
+                NetAmount = p.NetAmount,
+                Archived = _db.Set<HR.Domain.Engines.Documents.GeneratedDocument>()
+                    .Any(g => g.EntityType == "PayrollPayslip" && g.EntityId == p.Id && g.FileUrl != null),
+            }).ToListAsync(ct);
+        return OkResponse(new PagedResult<PayslipRowDto>(items, page, size, total));
+    }
+
+    [HttpGet("runs/{runId:guid}/payslips/{employeeId:guid}/pdf")]
+    [RequirePermission("Payroll.Payslip.View")]
+    public Task<IActionResult> ViewPayslip(Guid runId, Guid employeeId, CancellationToken ct)
+        => PayslipFileAsync(runId, employeeId, inline: true, ct);
+
+    [HttpGet("runs/{runId:guid}/payslips/{employeeId:guid}/print")]
+    [RequirePermission("Payroll.Payslip.Print")]
+    public Task<IActionResult> PrintPayslip(Guid runId, Guid employeeId, CancellationToken ct)
+        => PayslipFileAsync(runId, employeeId, inline: true, ct);
+
+    [HttpGet("runs/{runId:guid}/payslips/{employeeId:guid}/download")]
+    [RequirePermission("Payroll.Payslip.Download")]
+    public Task<IActionResult> DownloadPayslip(Guid runId, Guid employeeId, CancellationToken ct)
+        => PayslipFileAsync(runId, employeeId, inline: false, ct);
+
+    [HttpPost("runs/{id:guid}/payslips/generate")]
+    [RequirePermission("Payroll.Payslip.Download")]
+    public async Task<ActionResult<ApiResponse<int>>> GeneratePayslips(Guid id, CancellationToken ct)
+        => OkResponse(await _payslips.ArchiveRunAsync(id, ct), "تم إنشاء قسائم الرواتب وأرشفتها.");
+
+    private async Task<IActionResult> PayslipFileAsync(Guid runId, Guid employeeId, bool inline, CancellationToken ct)
+    {
+        var r = await _payslips.RenderAsync(runId, employeeId, archive: false, ct);
+        if (inline)
+        {
+            Response.Headers["Content-Disposition"] = $"inline; filename=\"{r.FileName}\"";
+            return File(r.Pdf, "application/pdf");
+        }
+        return File(r.Pdf, "application/pdf", r.FileName);
     }
 
     [HttpGet("runs/{id:guid}/calculations")]
