@@ -27,6 +27,8 @@ public sealed class DocumentLibrarySeeder : IDocumentLibrarySeeder
     private static object Divider() => new { type = "divider" };
     private static object Spacer(int h = 16) => new { type = "spacer", height = h };
     private static object Sig(string role, string label) => new { type = "signature", role, label };
+    private static object Components(string label) => new { type = "components", label };
+    private static object Qr() => new { type = "qr", align = "center" };
     private static string Layout(params object[] blocks) => JsonSerializer.Serialize(new { blocks });
 
     public async Task SeedAsync(Guid pageTemplateId, CancellationToken ct)
@@ -140,10 +142,35 @@ public sealed class DocumentLibrarySeeder : IDocumentLibrarySeeder
             Spacer(24),
             Sig("hr", "إدارة الموارد البشرية")), ct);
 
+        // ── Payslip (SP4): a Payroll-module template using the dynamic "components" block, so any set of
+        // earnings/deductions renders without code changes. Editing it never changes archived payslips.
+        await Ensure("DOC_PAYSLIP", "Payslip", "قسيمة راتب", pageTemplateId, Layout(
+            Title("قسيمة راتب / Payslip"),
+            P("{{Company.NameAr}} — {{Company.NameEn}}"),
+            Spacer(8),
+            Table(
+                Row("الموظف", "{{Employee.Name}}"),
+                Row("الرقم الوظيفي", "{{Employee.Number}}"),
+                Row("الإدارة", "{{Employee.Department}}"),
+                Row("المسمى الوظيفي", "{{Employee.Position}}"),
+                Row("رقم الهوية", "{{Employee.NationalId}}"),
+                Row("الآيبان", "{{Employee.IBAN}}"),
+                Row("طريقة الدفع", "{{Employee.PaymentMethod}}"),
+                Row("فترة الراتب", "{{Payroll.Period}}"),
+                Row("تاريخ الصرف", "{{Payroll.PayDate}}"),
+                Row("رقم المسيّر", "{{Payroll.RunNumber}}")),
+            Spacer(8),
+            Components("الإيرادات"),
+            Spacer(16),
+            Qr(),
+            P("رقم المسيّر: {{Payroll.RunNumber}} — تم الإنشاء: {{Payroll.GeneratedAt}} بواسطة {{Payroll.GeneratedBy}}"),
+            Spacer(16),
+            Sig("hr", "إدارة الموارد البشرية")), ct, module: "Payroll");
+
         await _db.SaveChangesAsync(ct);
     }
 
-    private async Task Ensure(string code, string en, string ar, Guid pageTemplateId, string layoutJson, CancellationToken ct)
+    private async Task Ensure(string code, string en, string ar, Guid pageTemplateId, string layoutJson, CancellationToken ct, string module = "Requests")
     {
         var existing = await _db.DocumentTemplates.FirstOrDefaultAsync(d => d.Code == code, ct);
         if (existing is not null)
@@ -156,7 +183,7 @@ public sealed class DocumentLibrarySeeder : IDocumentLibrarySeeder
         }
         _db.DocumentTemplates.Add(new DocumentTemplate
         {
-            Code = code, NameEn = en, NameAr = ar, Module = "Requests",
+            Code = code, NameEn = en, NameAr = ar, Module = module,
             Status = DocumentTemplateStatus.Published, OutputFormat = DocumentOutputFormat.Pdf,
             LayoutJson = layoutJson, PageTemplateId = pageTemplateId,
             UseBranding = true, IsActive = true, IsSystem = true,

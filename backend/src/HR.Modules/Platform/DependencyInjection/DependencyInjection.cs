@@ -87,6 +87,10 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Documents.DocumentRenderer>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentGenerationService,
             HR.Modules.Platform.Services.Documents.DocumentGenerationService>();
+        // Payslip rendering + immutable byte-archiving (SP4). Interface lives in HR.Application so the
+        // Payroll module depends on the abstraction, not on Platform.
+        services.AddScoped<HR.Application.Engines.Finance.IPayslipDocumentService,
+            HR.Modules.Platform.Services.Documents.PayslipDocumentService>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IPageTemplateSeeder,
             HR.Modules.Platform.Services.Documents.PageTemplateSeeder>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentLibrarySeeder,

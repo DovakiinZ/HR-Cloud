@@ -18,7 +18,12 @@ public sealed record DocumentRenderRequest(
     IReadOnlyDictionary<string, string> Tokens,
     IReadOnlyList<(string Label, string Value)>? DefaultDetails,
     IReadOnlyList<(int Order, string Name, string Status)>? Approvals,
-    string FileName);
+    string FileName,
+    // Optional payslip breakdown. When present, a template's "components" block renders it as a dynamic
+    // earnings/deductions/net table — the channel that lets one template serve any component set. Reuses
+    // the tested Domain projection (totals included); PayslipLabels maps ComponentCode → display label.
+    HR.Domain.Engines.Finance.Payslips.PayslipBreakdown? Payslip = null,
+    IReadOnlyDictionary<string, string>? PayslipLabels = null);
 
 /// <summary>Renders official PDFs using QuestPDF — works on Linux, no native deps. New templates use
 /// the JSON block model (<c>LayoutJson</c>) composed with a PageTemplate's chrome
@@ -210,7 +215,7 @@ public sealed class DocumentRenderer : IDocumentRenderer
                     col.Item().AlignCenter().Text(title).FontSize(15).Bold();
 
                     if (useBody && blocks is not null)
-                        RenderBlocks(col, blocks, tokenValues, qr, stamp, hrSig, ceoSig, blockImages);
+                        RenderBlocks(col, blocks, tokenValues, qr, stamp, hrSig, ceoSig, blockImages, req.Payslip, req.PayslipLabels);
                     else if (useBody && legacyHtml is not null)
                         RenderLegacy(col, legacyHtml);
                     else
@@ -286,7 +291,9 @@ public sealed class DocumentRenderer : IDocumentRenderer
     // ── Block model rendering ──
 
     private static void RenderBlocks(QuestPDF.Fluent.ColumnDescriptor col, List<Block> blocks, IReadOnlyDictionary<string, string> tokens,
-        byte[] qr, byte[]? stamp, byte[]? hrSig, byte[]? ceoSig, IReadOnlyDictionary<string, byte[]> blockImages)
+        byte[] qr, byte[]? stamp, byte[]? hrSig, byte[]? ceoSig, IReadOnlyDictionary<string, byte[]> blockImages,
+        HR.Domain.Engines.Finance.Payslips.PayslipBreakdown? payslip = null,
+        IReadOnlyDictionary<string, string>? payslipLabels = null)
     {
         foreach (var b in blocks)
         {
@@ -338,6 +345,34 @@ public sealed class DocumentRenderer : IDocumentRenderer
                     break;
                 case "stamp":
                     if (stamp is not null) Aligned(col, b.Align, "left").Width(b.Width ?? 100).Image(stamp).FitWidth();
+                    break;
+                case "components":
+                    if (payslip is not null && (payslip.Earnings.Count > 0 || payslip.Deductions.Count > 0))
+                    {
+                        var currency = tokens.GetValueOrDefault("Payroll.Currency", "SAR");
+                        string LabelOf(HR.Domain.Engines.Finance.Payslips.PayslipComponentLine l)
+                            => payslipLabels is not null && payslipLabels.TryGetValue(l.ComponentCode, out var lbl) && !string.IsNullOrWhiteSpace(lbl)
+                                ? lbl : l.ComponentCode;
+                        col.Item().Table(table =>
+                        {
+                            table.ColumnsDefinition(c => { c.RelativeColumn(3); c.RelativeColumn(2); });
+                            void Section(string header, IReadOnlyList<HR.Domain.Engines.Finance.Payslips.PayslipComponentLine> lines, decimal total, string totalLabel)
+                            {
+                                table.Cell().ColumnSpan(2).Background(Colors.Grey.Lighten3).Padding(6).Text(header).Bold().FontSize(11);
+                                foreach (var l in lines)
+                                {
+                                    table.Cell().Padding(6).Text(LabelOf(l)).FontSize(10);
+                                    table.Cell().Padding(6).AlignLeft().Text($"{l.Amount:N2} {currency}");
+                                }
+                                table.Cell().Padding(6).Text(totalLabel).Bold().FontSize(10);
+                                table.Cell().Padding(6).AlignLeft().Text($"{total:N2} {currency}").Bold();
+                            }
+                            Section(b.Label ?? "الإيرادات", payslip.Earnings, payslip.TotalEarnings, "إجمالي الإيرادات");
+                            Section("الاستقطاعات", payslip.Deductions, payslip.TotalDeductions, "إجمالي الاستقطاعات");
+                            table.Cell().Background(Colors.Grey.Lighten2).Padding(6).Text("صافي الراتب").Bold().FontSize(11);
+                            table.Cell().Background(Colors.Grey.Lighten2).Padding(6).AlignLeft().Text($"{payslip.NetAmount:N2} {currency}").Bold().FontSize(11);
+                        });
+                    }
                     break;
                 case "divider":
                     col.Item().LineHorizontal(0.5f).LineColor(Colors.Grey.Lighten1);
