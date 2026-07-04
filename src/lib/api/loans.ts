@@ -25,6 +25,7 @@ export interface CreateLoanInput {
   kind: string;                 // Loan | Advance
   principal: number;
   installmentMonths: number;
+  startMonth?: string | null;   // ISO date (1st of the month the first installment is deducted)
 }
 
 export const createLoan = (input: CreateLoanInput) =>
@@ -36,5 +37,6 @@ export const createLoan = (input: CreateLoanInput) =>
       kind: input.kind,
       principal: input.principal,
       installmentMonths: input.installmentMonths,
+      startMonth: input.startMonth ?? null,
     },
   });

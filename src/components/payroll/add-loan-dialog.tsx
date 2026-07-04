@@ -22,6 +22,13 @@ function notifyError(err: unknown, fallback: string) {
   }
 }
 
+// Next month as "YYYY-MM" — the default first-installment month.
+function nextMonth(): string {
+  const d = new Date();
+  d.setMonth(d.getMonth() + 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 /// <summary>Manually add a loan or salary advance and assign it to any employee. Generates the
 /// monthly installment schedule on the backend. Types come from the LoanType master-data.</summary>
 export function AddLoanDialog({ onSuccess }: { onSuccess: () => void }) {
@@ -35,6 +42,7 @@ export function AddLoanDialog({ onSuccess }: { onSuccess: () => void }) {
   const [typeId, setTypeId] = useState<string | null>(null);
   const [principal, setPrincipal] = useState("");
   const [months, setMonths] = useState("1");
+  const [startMonth, setStartMonth] = useState(nextMonth());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -71,6 +79,7 @@ export function AddLoanDialog({ onSuccess }: { onSuccess: () => void }) {
     setTypeId(null);
     setPrincipal("");
     setMonths("1");
+    setStartMonth(nextMonth());
   }
 
   function handleClose() {
@@ -84,9 +93,13 @@ export function AddLoanDialog({ onSuccess }: { onSuccess: () => void }) {
     const p = Number(principal);
     if (Number.isNaN(p) || p <= 0) { toast.error("أدخل مبلغاً صحيحاً أكبر من صفر"); return; }
     const m = Math.max(1, Number(months) || 1);
+    if (!startMonth) { toast.error("حدد بداية الخصم"); return; }
     setSaving(true);
     try {
-      await createLoan({ employeeId, loanTypeId: typeId, kind, principal: p, installmentMonths: m });
+      await createLoan({
+        employeeId, loanTypeId: typeId, kind, principal: p, installmentMonths: m,
+        startMonth: `${startMonth}-01`,
+      });
       toast.success(kind === "Advance" ? "تمت إضافة السلفة بنجاح" : "تمت إضافة القرض بنجاح");
       setOpen(false);
       reset();
@@ -168,9 +181,18 @@ export function AddLoanDialog({ onSuccess }: { onSuccess: () => void }) {
               </div>
             </div>
 
+            <div className="space-y-2">
+              <Label className="text-xs font-bold uppercase tracking-wider">بداية الخصم</Label>
+              <Input
+                type="month" value={startMonth} onChange={(e) => setStartMonth(e.target.value)}
+                className="bg-secondary border-border" dir="ltr"
+              />
+              <p className="text-xs text-muted-foreground">الشهر الذي يبدأ خصم أول قسط فيه من الراتب.</p>
+            </div>
+
             {monthlyPreview !== null && (
               <p className="text-xs text-muted-foreground">
-                القسط الشهري ≈ <span className="font-bold text-foreground tabular-nums">{monthlyPreview.toLocaleString("en-US")}</span> ريال
+                {months} قسط × <span className="font-bold text-foreground tabular-nums">{monthlyPreview.toLocaleString("en-US")}</span> ريال ابتداءً من {startMonth}
               </p>
             )}
           </div>
