@@ -347,6 +347,59 @@ export async function downloadPayslip(runId: string, employeeId: string, fileNam
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }
 
+// ---------------------------------------------------------------------------
+// Exports (SP5) — pluggable report + bank-file framework
+// ---------------------------------------------------------------------------
+
+export interface ExportOption {
+  kind: string;
+  title: string;
+  isBank: boolean;
+  format: string;
+}
+
+export interface ExportJob {
+  jobId: string;
+  kind: string;
+  format: string;
+  isBank: boolean;
+  status: string;
+  rowCount: number;
+  artifactFileId?: string | null;
+  fileName?: string | null;
+  error?: string | null;
+  createdAt: string;
+}
+
+export const getExportOptions = (runId: string): Promise<ExportOption[]> =>
+  apiFetch<ExportOption[]>(`/api/payroll/runs/${runId}/exports/options`);
+
+export const listExports = (runId: string): Promise<ExportJob[]> =>
+  apiFetch<ExportJob[]>(`/api/payroll/runs/${runId}/exports`);
+
+export const createExport = (runId: string, kind: string, format: string): Promise<ExportJob> =>
+  apiFetch<ExportJob>(`/api/payroll/runs/${runId}/exports`, { method: "POST", body: { kind, format } });
+
+export async function downloadExport(jobId: string, fileName?: string): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/payroll/exports/${jobId}/download`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("تعذر تحميل ملف التصدير");
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName ?? `export-${jobId}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Report formats offered in the UI (bank profiles use their own fixed format). */
+export const EXPORT_FORMATS = ["Excel", "Csv", "Txt", "Xml"] as const;
+
 export const STATE_AR: Record<string, string> = {
   Draft: "مسودة", Preview: "معاينة", Validated: "تم التحقق", PendingApproval: "بانتظار الاعتماد",
   Approved: "معتمد", Executing: "قيد التنفيذ", Completed: "مكتمل", Locked: "مقفل", Archived: "مؤرشف",
