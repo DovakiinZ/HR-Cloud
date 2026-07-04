@@ -1,26 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { HandCoins, Loader2 } from "lucide-react";
 import { getLoans, LoanRecord } from "@/lib/api/loans";
+import { AddLoanDialog } from "./add-loan-dialog";
 
-/// <summary>Loans & advances list (installment schedules). Reused by the standalone /loans route and the
-/// Payroll Run page's "loans" tab so HR can review them while preparing the run.</summary>
+/// <summary>Loans & advances list (installment schedules). Manual entries + records created when
+/// loan/advance requests are approved. Reused by the standalone /loans route and the Payroll Run page.</summary>
 export function LoansPanel() {
   const [rows, setRows] = useState<LoanRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState<string | null>(null);
 
-  useEffect(() => { getLoans("all").then(setRows).catch(() => setRows([])).finally(() => setLoading(false)); }, []);
+  const load = useCallback(() => {
+    setLoading(true);
+    getLoans("all").then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
   const money = (n: number) => `${Math.round(n).toLocaleString("en-US")} ريال`;
 
-  if (loading) return <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>;
-  if (rows.length === 0) return (
-    <div className="flex flex-col items-center justify-center border border-dashed border-border p-12 text-center"><HandCoins className="mb-3 h-10 w-10 text-muted-foreground" /><p className="text-sm text-muted-foreground">لا توجد قروض أو سلف بعد — تُنشأ عند اعتماد طلبات القروض/السلف</p></div>
-  );
-
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
+      <div className="flex items-center justify-end">
+        <AddLoanDialog onSuccess={load} />
+      </div>
+
+      {loading ? (
+        <div className="flex h-64 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+      ) : rows.length === 0 ? (
+        <div className="flex flex-col items-center justify-center border border-dashed border-border p-12 text-center"><HandCoins className="mb-3 h-10 w-10 text-muted-foreground" /><p className="text-sm text-muted-foreground">لا توجد قروض أو سلف بعد — أضف قرضاً/سلفة يدوياً أو اعتمد طلباً</p></div>
+      ) : (
+      <div className="space-y-2">
       {rows.map((l) => (
         <div key={l.id} className="border border-border bg-card">
           <button onClick={() => setOpen(open === l.id ? null : l.id)} className="flex w-full flex-wrap items-center justify-between gap-3 px-4 py-3 text-right hover:bg-muted/30">
@@ -48,6 +59,8 @@ export function LoansPanel() {
           )}
         </div>
       ))}
+      </div>
+      )}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft, LayoutList, TrendingUp } from "lucide-react";
+import { ArrowRight, Wallet, Coins, CreditCard, Users, ChevronLeft, LayoutList, TrendingUp, Receipt, HandCoins } from "lucide-react";
 
 const modules = [
   {
@@ -25,6 +25,18 @@ const modules = [
     title: "الاستقطاعات",
     description: "أنواع الاستقطاعات (تأمينات، سلف، جزاءات)",
     icon: Coins,
+  },
+  {
+    href: "/settings/payroll/expenses",
+    title: "فئات المصروفات",
+    description: "أنواع المصروفات (سفر، إقامة، تدريب…) المتاحة عند إضافة مصروف",
+    icon: Receipt,
+  },
+  {
+    href: "/settings/payroll/loan-types",
+    title: "أنواع القروض والسلف",
+    description: "تصنيفات القروض والسلف المتاحة عند إضافة قرض/سلفة",
+    icon: HandCoins,
   },
   {
     href: "/settings/payroll/groups",

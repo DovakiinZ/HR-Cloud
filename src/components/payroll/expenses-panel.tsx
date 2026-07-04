@@ -1,25 +1,37 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Loader2, Receipt } from "lucide-react";
 import { ExpenseRecord, getExpenses } from "@/lib/api/expenses";
+import { AddExpenseDialog } from "./add-expense-dialog";
 
-/// <summary>Expenses list (from approved expense claims). Reused by the standalone /expenses route and the
-/// Payroll Run page's "expenses" tab.</summary>
+/// <summary>Expenses list (manual entries + approved expense claims). Reused by the standalone /expenses
+/// route and the Payroll Run page's "expenses" tab.</summary>
 export function ExpensesPanel() {
   const [rows, setRows] = useState<ExpenseRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => { getExpenses("all").then(setRows).catch(() => setRows([])).finally(() => setLoading(false)); }, []);
+  const load = useCallback(() => {
+    setLoading(true);
+    getExpenses("all").then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
   const money = (n: number, c: string) => `${Math.round(n).toLocaleString("en-US")} ${c}`;
   const total = rows.reduce((s, r) => s + r.amount, 0);
 
-  if (loading) return <Center><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></Center>;
-  if (rows.length === 0) return <Empty icon={Receipt} text="لا توجد مصروفات بعد — تُنشأ تلقائياً عند اعتماد مطالبات المصروف" />;
-
   return (
     <div className="space-y-3">
-      <div className="text-sm text-muted-foreground">الإجمالي: <span className="font-bold text-foreground">{money(total, rows[0]?.currency ?? "SAR")}</span></div>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-sm text-muted-foreground">الإجمالي: <span className="font-bold text-foreground">{money(total, rows[0]?.currency ?? "SAR")}</span></div>
+        <AddExpenseDialog onSuccess={load} />
+      </div>
+
+      {loading ? (
+        <Center><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></Center>
+      ) : rows.length === 0 ? (
+        <Empty icon={Receipt} text="لا توجد مصروفات بعد — أضف مصروفاً يدوياً أو اعتمد مطالبة مصروف" />
+      ) : (
       <div className="overflow-x-auto border border-border bg-card">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-border text-right text-xs text-muted-foreground">
@@ -39,6 +51,7 @@ export function ExpensesPanel() {
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }
