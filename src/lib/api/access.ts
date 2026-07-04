@@ -96,6 +96,9 @@ export const disableUser = (id: string) => apiFetch<unknown>(`/api/users/${id}/d
 export const enableUser = (id: string) => apiFetch<unknown>(`/api/users/${id}/enable`, { method: "POST" });
 export const forceLogout = (id: string) => apiFetch<unknown>(`/api/users/${id}/force-logout`, { method: "POST" });
 export const resetPassword = (id: string) => apiFetch<TokenLinkResult>(`/api/users/${id}/reset-password`, { method: "POST" });
+/** Admin sets a user's password directly (audited). */
+export const setPassword = (id: string, password: string) =>
+  apiFetch<unknown>(`/api/users/${id}/set-password`, { method: "POST", body: { password } });
 export const changeEmail = (id: string, email: string) =>
   apiFetch<unknown>(`/api/users/${id}/change-email`, { method: "POST", body: { email } });
 export const setUserRoles = (id: string, roleIds: string[]) =>

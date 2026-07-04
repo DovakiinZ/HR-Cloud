@@ -41,6 +41,7 @@ public class CreateUserRequest
 
 public class UpdateUserRequest { public string? FullName { get; set; } public string? Phone { get; set; } }
 public class ChangeEmailRequest { public string Email { get; set; } = string.Empty; }
+public class SetPasswordRequest { public string Password { get; set; } = string.Empty; }
 public class SetRolesRequest { public List<Guid> RoleIds { get; set; } = new(); }
 public class LinkEmployeeRequest { public Guid EmployeeId { get; set; } }
 public class CreateFromEmployeeRequest

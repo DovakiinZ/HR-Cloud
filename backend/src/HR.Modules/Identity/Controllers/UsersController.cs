@@ -190,6 +190,22 @@ public class UsersController : BaseApiController
         return OkResponse("Email updated.");
     }
 
+    /// <summary>Admin sets a user's password directly (enter + confirm on the client). Gated to user-management
+    /// (System Administrator); audited with who changed it and when.</summary>
+    [HttpPost("{id:guid}/set-password")]
+    [RequirePermission(ManageUsers)]
+    public async Task<ActionResult<ApiResponse>> SetPassword(Guid id, [FromBody] SetPasswordRequest req, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.Password) || req.Password.Length < 6)
+            throw new ConflictException("كلمة المرور يجب ألا تقل عن 6 أحرف.");
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == id, ct) ?? throw new NotFoundException("User", id);
+        user.PasswordHash = HR.Modules.Identity.Services.PasswordHasher.Hash(req.Password);
+        await _db.SaveChangesAsync(ct);
+        await _audit.LogAsync("PasswordChangedByAdmin", "Access.User", id,
+            null, new { changedByUserId = _currentUser.UserId, user.Email }, ct);
+        return OkResponse("تم تغيير كلمة المرور بنجاح.");
+    }
+
     [HttpPut("{id:guid}/roles")]
     [RequirePermission(ManageUsers)]
     public async Task<ActionResult<ApiResponse<UserDetail>>> SetRoles(Guid id, [FromBody] SetRolesRequest req, CancellationToken ct)
