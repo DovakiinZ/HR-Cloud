@@ -31,10 +31,12 @@ public static class PayrollRunStateMachine
             [PayrollRunState.Approved] = new[] { PayrollRunState.Executing, PayrollRunState.Cancelled },
             [PayrollRunState.Executing] = new[] { PayrollRunState.Completed, PayrollRunState.Failed },
             [PayrollRunState.Failed] = new[] { PayrollRunState.Executing, PayrollRunState.Cancelled },
-            [PayrollRunState.Completed] = new[] { PayrollRunState.Locked },
-            [PayrollRunState.Locked] = new[] { PayrollRunState.Archived },
+            // Completed/Locked are posted; SP6 lets them be Voided (ledger reversed) — never reopened.
+            [PayrollRunState.Completed] = new[] { PayrollRunState.Locked, PayrollRunState.Voided },
+            [PayrollRunState.Locked] = new[] { PayrollRunState.Archived, PayrollRunState.Voided },
             [PayrollRunState.Archived] = Array.Empty<PayrollRunState>(),
             [PayrollRunState.Cancelled] = Array.Empty<PayrollRunState>(),
+            [PayrollRunState.Voided] = Array.Empty<PayrollRunState>(),
         };
 
     public static IReadOnlyList<PayrollRunState> NextStates(PayrollRunState from) =>
@@ -55,5 +57,5 @@ public static class PayrollRunStateMachine
         or PayrollRunState.Locked or PayrollRunState.Archived;
 
     public static bool IsTerminal(PayrollRunState state) =>
-        state is PayrollRunState.Archived or PayrollRunState.Cancelled;
+        state is PayrollRunState.Archived or PayrollRunState.Cancelled or PayrollRunState.Voided;
 }

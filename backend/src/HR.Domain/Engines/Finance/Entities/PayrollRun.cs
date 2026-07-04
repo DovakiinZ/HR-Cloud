@@ -59,6 +59,17 @@ public class PayrollRun : TenantEntity
     public Guid? ApprovedByUserId { get; set; }
     public DateTime? ApprovedAt { get; set; }
 
+    // ── SP6: void + amendment chain ──
+    /// <summary>When this run amends another, the id of the run it supersedes.</summary>
+    public Guid? AmendsRunId { get; set; }
+    /// <summary>On the amended (old) run, the id of the run that superseded it. The AmendsRunId /
+    /// SupersededByRunId linked list is the amendment chain / run versioning.</summary>
+    public Guid? SupersededByRunId { get; set; }
+
+    public Guid? VoidedByUserId { get; set; }
+    public DateTime? VoidedAt { get; set; }
+    public string? VoidReason { get; set; }
+
     public ICollection<PayrollRunTransition> Transitions { get; set; } = new List<PayrollRunTransition>();
     public ICollection<PayrollPayslip> Payslips { get; set; } = new List<PayrollPayslip>();
     public ICollection<PayrollRunItem> Items { get; set; } = new List<PayrollRunItem>();

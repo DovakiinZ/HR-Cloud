@@ -110,6 +110,11 @@ public enum PayrollRunState
     Archived = 9,
     Failed = 10,
     Cancelled = 11,
+
+    /// <summary>A posted run whose ledger postings have been reversed (SP6). Terminal, and — unlike the
+    /// Approved+ frozen states — NOT immutable: voiding releases the run's hold on the pay period so an
+    /// amendment run can own it. Corrections never reopen a run (ADR PAY-4).</summary>
+    Voided = 12,
 }
 
 /// <summary>Per-employee processing state inside a batch payroll run — drives concurrency, retries and

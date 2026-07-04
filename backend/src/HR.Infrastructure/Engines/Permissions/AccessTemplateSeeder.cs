@@ -31,13 +31,14 @@ public sealed class AccessTemplateSeeder : IAccessTemplateSeeder
         new("Payroll Officer", "موظف الرواتب", "Prepares and runs payroll.", new[]
         {
             "Payroll.View","Payroll.Create","Payroll.Edit","Payroll.Run","Payroll.Export","Payroll.Export.Bank","Payroll.Configure",
-            "Payroll.Payslip.View","Payroll.Payslip.Print","Payroll.Payslip.Download",
+            "Payroll.Payslip.View","Payroll.Payslip.Print","Payroll.Payslip.Download","Payroll.Run.Reissue",
             "Employees.View","Expenses.View","Loans.View","Reports.View","Dashboards.View",
         }),
         new("Finance", "المالية", "Approves and locks payroll, manages expenses and loans.", new[]
         {
             "Payroll.View","Payroll.Approve","Payroll.Lock","Payroll.Export","Payroll.Export.Bank",
             "Payroll.Payslip.View","Payroll.Payslip.Print","Payroll.Payslip.Download",
+            "Payroll.Run.Void","Payroll.Run.Amend","Payroll.Run.Reissue",
             "Expenses.View","Expenses.Approve","Loans.View","Loans.Approve",
             "Reports.View","Reports.Export","Dashboards.View",
         }),
