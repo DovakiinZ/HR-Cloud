@@ -37,14 +37,20 @@ public class PayrollController : BaseApiController
     private readonly IPayrollRunReadService _runRead;
     private readonly ICreateFromRunService _createFromRun;
     private readonly IPayslipDocumentService _payslips;
+    private readonly HR.Application.Engines.Finance.Export.IPayrollExportService _exports;
+    private readonly HR.Application.Common.Interfaces.ICurrentUserService _currentUser;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
         IPayrollTypeService types, IScopeEngine scope, IPayrollTransactionService transactions,
         IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync,
-        IPayrollRunReadService runRead, ICreateFromRunService createFromRun, IPayslipDocumentService payslips)
+        IPayrollRunReadService runRead, ICreateFromRunService createFromRun, IPayslipDocumentService payslips,
+        HR.Application.Engines.Finance.Export.IPayrollExportService exports,
+        HR.Application.Common.Interfaces.ICurrentUserService currentUser)
     {
         _payslips = payslips;
+        _exports = exports;
+        _currentUser = currentUser;
         _db = db;
         _runEngine = runEngine;
         _previewEngine = previewEngine;
@@ -246,6 +252,39 @@ public class PayrollController : BaseApiController
             return File(r.Pdf, "application/pdf");
         }
         return File(r.Pdf, "application/pdf", r.FileName);
+    }
+
+    // ── Exports (SP5) ───────────────────────────────────────────────────────────────
+
+    /// <summary>The report types + bank profiles available to export for a run (drives the export dialog).</summary>
+    [HttpGet("runs/{id:guid}/exports/options")]
+    [RequirePermission("Payroll.Export")]
+    public ActionResult<ApiResponse<IReadOnlyList<HR.Application.Engines.Finance.Export.ExportOptionDto>>> ExportOptions(Guid id)
+        => OkResponse(_exports.AvailableExports());
+
+    [HttpGet("runs/{id:guid}/exports")]
+    [RequirePermission("Payroll.Export")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<HR.Application.Engines.Finance.Export.ExportResult>>>> ListExports(Guid id, CancellationToken ct)
+        => OkResponse(await _exports.ListAsync(id, ct));
+
+    [HttpPost("runs/{id:guid}/exports")]
+    [RequirePermission("Payroll.Export")]
+    public async Task<ActionResult<ApiResponse<HR.Application.Engines.Finance.Export.ExportResult>>> CreateExport(
+        Guid id, [FromBody] HR.Application.Engines.Finance.Export.ExportRequest req, CancellationToken ct)
+    {
+        // Bank files carry IBAN/salary data — require the finer permission on top of Payroll.Export.
+        if (_exports.IsBankKind(req.Kind) && !_currentUser.Permissions.Contains("Payroll.Export.Bank"))
+            throw new ForbiddenException("ليس لديك صلاحية تصدير ملفات البنوك.");
+        return CreatedResponse(await _exports.CreateAsync(id, req, ct));
+    }
+
+    [HttpGet("exports/{jobId:guid}/download")]
+    [RequirePermission("Payroll.Export")]
+    public async Task<IActionResult> DownloadExport(Guid jobId, CancellationToken ct)
+    {
+        var file = await _exports.DownloadAsync(jobId, ct);
+        if (file is null) return NotFound(ApiResponse.Fail("ملف التصدير غير موجود"));
+        return File(file.Value.bytes, file.Value.contentType, file.Value.fileName);
     }
 
     [HttpGet("runs/{id:guid}/calculations")]
