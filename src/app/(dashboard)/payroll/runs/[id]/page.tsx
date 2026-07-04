@@ -20,6 +20,7 @@ import { RunExcludedPanel } from "@/components/payroll/run-excluded-panel";
 import { RunTransactionsPanel } from "@/components/payroll/run-transactions-panel";
 import { RunValidationPanel } from "@/components/payroll/run-validation-panel";
 import { RunTimeline } from "@/components/payroll/run-timeline";
+import { RunPayslipsPanel } from "@/components/payroll/run-payslips-panel";
 import {
   getRunSummary, calculateRun, validateRun, submitRun, approveRun, executeRun, cancelRun,
   type PayrollRunSummary,
@@ -245,6 +246,7 @@ function Inner({ id }: { id: string }) {
           <TabsTrigger value="transactions" className="pb-2">الحركات</TabsTrigger>
           <TabsTrigger value="validation" className="pb-2">التحقق</TabsTrigger>
           <TabsTrigger value="excluded" className="pb-2">المستثنون</TabsTrigger>
+          {has("Payroll.Payslip.View") && <TabsTrigger value="payslips" className="pb-2">قسائم الرواتب</TabsTrigger>}
           <TabsTrigger value="timeline" className="pb-2">السجل الزمني</TabsTrigger>
         </TabsList>
 
@@ -267,6 +269,12 @@ function Inner({ id }: { id: string }) {
         <TabsContent value="excluded" className="pt-4">
           <RunExcludedPanel runId={id} />
         </TabsContent>
+
+        {has("Payroll.Payslip.View") && (
+          <TabsContent value="payslips" className="pt-4">
+            <RunPayslipsPanel runId={id} currency={run.currency} />
+          </TabsContent>
+        )}
 
         <TabsContent value="timeline" className="pt-4">
           <RunTimeline runId={id} currency={run.currency} timeline={run.timeline} />

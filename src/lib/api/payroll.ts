@@ -1,4 +1,5 @@
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
 
 // ---------------------------------------------------------------------------
 // Paged contract — shared by all decomposed run list endpoints
@@ -291,6 +292,60 @@ export const createRunTransaction = (
   body: CreateRunTransactionBody,
 ): Promise<CreateRunTransactionResult> =>
   apiFetch<CreateRunTransactionResult>(`/api/payroll/runs/${id}/transactions`, { method: "POST", body });
+
+// ---------------------------------------------------------------------------
+// Payslips (SP4) — dynamic payslip template engine
+// ---------------------------------------------------------------------------
+
+export interface PayslipRow {
+  employeeId: string;
+  employeeNumber: string;
+  employeeName: string;
+  currency: string;
+  grossEarnings: number;
+  totalDeductions: number;
+  netAmount: number;
+  archived: boolean;
+}
+
+/** GET /api/payroll/runs/{id}/payslips — paged payslip list with archived flag */
+export const getRunPayslips = (id: string, q?: PagedQuery): Promise<Paged<PayslipRow>> =>
+  apiFetch<Paged<PayslipRow>>(`/api/payroll/runs/${id}/payslips${buildPagedQs(q)}`);
+
+/** POST /api/payroll/runs/{id}/payslips/generate — bulk render + archive; returns count */
+export const generateRunPayslips = (id: string): Promise<number> =>
+  apiFetch<number>(`/api/payroll/runs/${id}/payslips/generate`, { method: "POST" });
+
+async function fetchPayslipBlob(runId: string, employeeId: string, mode: "pdf" | "print" | "download"): Promise<Blob> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/payroll/runs/${runId}/payslips/${employeeId}/${mode}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new Error("تعذر تحميل قسيمة الراتب");
+  return res.blob();
+}
+
+/** Open a payslip PDF in a new tab (optionally invoking the browser print dialog). */
+export async function viewPayslip(runId: string, employeeId: string, print = false): Promise<void> {
+  const blob = await fetchPayslipBlob(runId, employeeId, print ? "print" : "pdf");
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  if (win && print) win.addEventListener("load", () => win.print());
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Download a payslip PDF as an attachment. */
+export async function downloadPayslip(runId: string, employeeId: string, fileName?: string): Promise<void> {
+  const blob = await fetchPayslipBlob(runId, employeeId, "download");
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName ?? `payslip-${employeeId}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
 
 export const STATE_AR: Record<string, string> = {
   Draft: "مسودة", Preview: "معاينة", Validated: "تم التحقق", PendingApproval: "بانتظار الاعتماد",
