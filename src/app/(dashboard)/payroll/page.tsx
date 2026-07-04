@@ -71,9 +71,11 @@ function Inner() {
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <Link href="/payroll/additions" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">الإضافات</Link>
         <Link href="/payroll/deductions" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">الاستقطاعات</Link>
+        <Link href="/loans" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">القروض والسلف</Link>
+        <Link href="/expenses" className="text-sm border border-border px-3 py-1.5 hover:bg-card/50 transition-colors">المصروفات</Link>
       </div>
 
       {loading ? (

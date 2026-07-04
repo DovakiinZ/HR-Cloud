@@ -24,8 +24,6 @@ import { RunTimeline } from "@/components/payroll/run-timeline";
 import { RunPayslipsPanel } from "@/components/payroll/run-payslips-panel";
 import { RunExportsPanel } from "@/components/payroll/run-exports-panel";
 import { RunAuditPanel } from "@/components/payroll/run-audit-panel";
-import { LoansPanel } from "@/components/payroll/loans-panel";
-import { ExpensesPanel } from "@/components/payroll/expenses-panel";
 import {
   getRunSummary, calculateRun, validateRun, submitRun, approveRun, executeRun, cancelRun,
   voidRun, amendRun, reissueRun,
@@ -300,8 +298,6 @@ function Inner({ id }: { id: string }) {
           {has("Payroll.Payslip.View") && <TabsTrigger value="payslips" className="pb-2">قسائم الرواتب</TabsTrigger>}
           {has("Payroll.Export") && <TabsTrigger value="exports" className="pb-2">التصدير</TabsTrigger>}
           {has("Payroll.Audit.View") && <TabsTrigger value="audit" className="pb-2">سجل التدقيق</TabsTrigger>}
-          {has("Loans.View") && <TabsTrigger value="loans" className="pb-2">القروض والسلف</TabsTrigger>}
-          {has("Expenses.View") && <TabsTrigger value="expenses" className="pb-2">المصروفات</TabsTrigger>}
           <TabsTrigger value="timeline" className="pb-2">السجل الزمني</TabsTrigger>
         </TabsList>
 
@@ -343,17 +339,6 @@ function Inner({ id }: { id: string }) {
           </TabsContent>
         )}
 
-        {has("Loans.View") && (
-          <TabsContent value="loans" className="pt-4">
-            <LoansPanel />
-          </TabsContent>
-        )}
-
-        {has("Expenses.View") && (
-          <TabsContent value="expenses" className="pt-4">
-            <ExpensesPanel />
-          </TabsContent>
-        )}
 
         <TabsContent value="timeline" className="pt-4">
           <RunTimeline runId={id} currency={run.currency} timeline={run.timeline} />
