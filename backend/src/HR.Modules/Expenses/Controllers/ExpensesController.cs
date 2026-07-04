@@ -1,5 +1,6 @@
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Domain.Engines.Expenses;
 using HR.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -60,5 +61,70 @@ public class ExpensesController : ControllerBase
                               ReceiptUrl = x.ReceiptUrl, Status = x.Status, DecidedAt = x.DecidedAt,
                           }).ToListAsync(ct);
         return Ok(ApiResponse<List<ExpenseDto>>.Ok(rows));
+    }
+
+    public sealed class CreateExpenseRequest
+    {
+        public Guid EmployeeId { get; set; }
+        public Guid? ExpenseCategoryId { get; set; }
+        public decimal Amount { get; set; }
+        public string? Currency { get; set; }
+        public string? Description { get; set; }
+        public string? ReceiptUrl { get; set; }
+        public string? Status { get; set; }
+    }
+
+    /// <summary>Manually create an expense assigned to any employee (HR/Finance action, no request needed).</summary>
+    [HttpPost]
+    public async Task<ActionResult<ApiResponse<ExpenseDto>>> Create([FromBody] CreateExpenseRequest body, CancellationToken ct)
+    {
+        var canCreate = _user.Permissions.Contains("Expenses.Approve")
+            || _user.Permissions.Contains("Payroll.Create")
+            || _user.Permissions.Contains("Payroll.Edit");
+        if (!canCreate) return Forbid();
+
+        if (body.EmployeeId == Guid.Empty)
+            return BadRequest(ApiResponse<ExpenseDto>.Fail("الموظف مطلوب"));
+        if (body.Amount <= 0)
+            return BadRequest(ApiResponse<ExpenseDto>.Fail("المبلغ يجب أن يكون أكبر من صفر"));
+
+        var emp = await _db.Employees.FirstOrDefaultAsync(e => e.Id == body.EmployeeId, ct);
+        if (emp is null)
+            return BadRequest(ApiResponse<ExpenseDto>.Fail("الموظف غير موجود"));
+
+        if (body.ExpenseCategoryId is { } catId)
+        {
+            var exists = await _db.MasterDataItems.AnyAsync(m => m.Id == catId && m.ObjectType == "ExpenseCategory", ct);
+            if (!exists) return BadRequest(ApiResponse<ExpenseDto>.Fail("فئة المصروف غير صحيحة"));
+        }
+
+        var status = string.IsNullOrWhiteSpace(body.Status) ? "Approved" : body.Status!.Trim();
+        var expense = new Expense
+        {
+            EmployeeId = body.EmployeeId,
+            ExpenseCategoryId = body.ExpenseCategoryId,
+            Amount = body.Amount,
+            Currency = string.IsNullOrWhiteSpace(body.Currency) ? "SAR" : body.Currency!.Trim(),
+            Description = string.IsNullOrWhiteSpace(body.Description) ? null : body.Description!.Trim(),
+            ReceiptUrl = string.IsNullOrWhiteSpace(body.ReceiptUrl) ? null : body.ReceiptUrl!.Trim(),
+            Status = status,
+            DecidedAt = DateTime.UtcNow,
+        };
+        _db.Expenses.Add(expense);
+        await _db.SaveChangesAsync(ct);
+
+        var categoryName = expense.ExpenseCategoryId is { } cid
+            ? await _db.MasterDataItems.Where(m => m.Id == cid).Select(m => m.NameAr).FirstOrDefaultAsync(ct)
+            : null;
+
+        var dto = new ExpenseDto
+        {
+            Id = expense.Id, EmployeeId = expense.EmployeeId,
+            EmployeeName = (emp.FirstNameAr ?? emp.FirstName) + " " + (emp.LastNameAr ?? emp.LastName),
+            Category = categoryName,
+            Amount = expense.Amount, Currency = expense.Currency, Description = expense.Description,
+            ReceiptUrl = expense.ReceiptUrl, Status = expense.Status, DecidedAt = expense.DecidedAt,
+        };
+        return Ok(ApiResponse<ExpenseDto>.Ok(dto));
     }
 }
