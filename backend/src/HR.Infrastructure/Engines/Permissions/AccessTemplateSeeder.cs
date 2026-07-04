@@ -38,7 +38,7 @@ public sealed class AccessTemplateSeeder : IAccessTemplateSeeder
         {
             "Payroll.View","Payroll.Approve","Payroll.Lock","Payroll.Export","Payroll.Export.Bank",
             "Payroll.Payslip.View","Payroll.Payslip.Print","Payroll.Payslip.Download",
-            "Payroll.Run.Void","Payroll.Run.Amend","Payroll.Run.Reissue",
+            "Payroll.Run.Void","Payroll.Run.Amend","Payroll.Run.Reissue","Payroll.Audit.View",
             "Expenses.View","Expenses.Approve","Loans.View","Loans.Approve",
             "Reports.View","Reports.Export","Dashboards.View",
         }),

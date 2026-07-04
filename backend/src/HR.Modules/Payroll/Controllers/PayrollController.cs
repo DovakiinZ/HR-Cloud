@@ -40,6 +40,7 @@ public class PayrollController : BaseApiController
     private readonly HR.Application.Engines.Finance.Export.IPayrollExportService _exports;
     private readonly HR.Application.Common.Interfaces.ICurrentUserService _currentUser;
     private readonly IPayrollRunAmendmentService _amendments;
+    private readonly IPayrollAuditReadService _audit;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
@@ -48,12 +49,13 @@ public class PayrollController : BaseApiController
         IPayrollRunReadService runRead, ICreateFromRunService createFromRun, IPayslipDocumentService payslips,
         HR.Application.Engines.Finance.Export.IPayrollExportService exports,
         HR.Application.Common.Interfaces.ICurrentUserService currentUser,
-        IPayrollRunAmendmentService amendments)
+        IPayrollRunAmendmentService amendments, IPayrollAuditReadService audit)
     {
         _payslips = payslips;
         _exports = exports;
         _currentUser = currentUser;
         _amendments = amendments;
+        _audit = audit;
         _db = db;
         _runEngine = runEngine;
         _previewEngine = previewEngine;
@@ -309,6 +311,16 @@ public class PayrollController : BaseApiController
     [RequirePermission("Payroll.Run.Reissue")]
     public async Task<ActionResult<ApiResponse<int>>> ReissueRun(Guid id, CancellationToken ct)
         => OkResponse(await _amendments.ReissueAsync(id, ct), "تم إعادة إصدار قسائم الرواتب.");
+
+    // ── Audit surface (SP8) ─────────────────────────────────────────────────────────
+
+    /// <summary>The unified, filterable payroll audit trail (run-scoped via ?runId= or global).</summary>
+    [HttpGet("audit")]
+    [RequirePermission("Payroll.Audit.View")]
+    public async Task<ActionResult<ApiResponse<PagedResult<PayrollAuditRow>>>> Audit(
+        [FromQuery] Guid? runId, [FromQuery] Guid? actorUserId, [FromQuery] string? action,
+        [FromQuery] DateTime? from, [FromQuery] DateTime? to, [FromQuery] PagedRequest request, CancellationToken ct)
+        => OkResponse(await _audit.QueryAsync(new PayrollAuditFilter(runId, actorUserId, action, from, to), request, ct));
 
     [HttpGet("runs/{id:guid}/calculations")]
     [RequirePermission("Payroll.View")]

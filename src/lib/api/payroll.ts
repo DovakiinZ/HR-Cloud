@@ -348,6 +348,41 @@ export async function downloadPayslip(runId: string, employeeId: string, fileNam
 }
 
 // ---------------------------------------------------------------------------
+// Audit surface (SP8)
+// ---------------------------------------------------------------------------
+
+export interface PayrollAuditRow {
+  timestamp: string;
+  action: string;
+  actorUserId?: string | null;
+  actorName?: string | null;
+  entityType: string;
+  entityId: string;
+  oldValues?: string | null;
+  newValues?: string | null;
+}
+
+export const getRunAudit = (runId: string, q?: PagedQuery): Promise<Paged<PayrollAuditRow>> => {
+  const extra = buildPagedQs(q).replace(/^\?/, "&");
+  return apiFetch<Paged<PayrollAuditRow>>(`/api/payroll/audit?runId=${runId}${extra}`);
+};
+
+/** Arabic labels for common audit actions; anything else shows the raw action. */
+export const AUDIT_ACTION_AR: Record<string, string> = {
+  PayrollRunCreated: "أُنشئ المسيّر",
+  PayrollRunPreview: "تم الاحتساب",
+  PayrollRunValidated: "تم التحقق",
+  PayrollRunPendingApproval: "أُرسل للاعتماد",
+  PayrollRunApproved: "تم الاعتماد",
+  PayrollRunExecuting: "بدأ التنفيذ",
+  PayrollRunCompleted: "اكتمل التنفيذ",
+  PayrollRunCancelled: "أُلغي",
+  PayrollRunVoided: "أُلغي وعُكست القيود",
+  PayrollRunAmended: "عُدّل (مسيّر جديد)",
+  PayrollRunReissued: "أُعيد إصدار القسائم",
+};
+
+// ---------------------------------------------------------------------------
 // Void / Amend / Reissue (SP6)
 // ---------------------------------------------------------------------------
 

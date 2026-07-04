@@ -74,6 +74,7 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPreviewEngine, HR.Infrastructure.Engines.Finance.PayrollPreviewEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunEngine, HR.Infrastructure.Engines.Finance.PayrollRunEngine>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunAmendmentService, HR.Infrastructure.Engines.Finance.PayrollRunAmendmentService>();
+        services.AddScoped<HR.Application.Engines.Finance.IPayrollAuditReadService, HR.Infrastructure.Engines.Finance.PayrollAuditReadService>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollPeriodGuard, HR.Infrastructure.Engines.Finance.PayrollPeriodGuard>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunStalenessEvaluator, HR.Infrastructure.Engines.Finance.PayrollRunStalenessEvaluator>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollRunReadService, HR.Infrastructure.Engines.Finance.PayrollRunReadService>();
