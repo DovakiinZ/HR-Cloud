@@ -22,6 +22,12 @@ function notifyError(err: unknown, fallback: string) {
   }
 }
 
+// Current month as "YYYY-MM" for the <input type="month"> default.
+function currentMonth(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 /// <summary>Manually add an expense and assign it to any employee. Categories come from the
 /// ExpenseCategory master-data (managed under Settings → Payroll → Expense types).</summary>
 export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
@@ -34,6 +40,8 @@ export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
   const [categoryId, setCategoryId] = useState<string | null>(null);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [includeInPayroll, setIncludeInPayroll] = useState(false);
+  const [payrollMonth, setPayrollMonth] = useState(currentMonth());
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -62,6 +70,8 @@ export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
     setCategoryId(null);
     setAmount("");
     setDescription("");
+    setIncludeInPayroll(false);
+    setPayrollMonth(currentMonth());
   }
 
   function handleClose() {
@@ -74,6 +84,7 @@ export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
     if (!employeeId) { toast.error("اختر موظفاً"); return; }
     const amt = Number(amount);
     if (Number.isNaN(amt) || amt <= 0) { toast.error("أدخل مبلغاً صحيحاً أكبر من صفر"); return; }
+    if (includeInPayroll && !payrollMonth) { toast.error("حدد شهر الرواتب"); return; }
     setSaving(true);
     try {
       await createExpense({
@@ -81,6 +92,9 @@ export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
         expenseCategoryId: categoryId,
         amount: amt,
         description: description.trim() || null,
+        includeInPayroll,
+        // Send the 1st of the selected month as an ISO date.
+        payrollMonth: includeInPayroll ? `${payrollMonth}-01` : null,
       });
       toast.success("تمت إضافة المصروف بنجاح");
       setOpen(false);
@@ -142,6 +156,34 @@ export function AddExpenseDialog({ onSuccess }: { onSuccess: () => void }) {
                 value={description} onChange={(e) => setDescription(e.target.value)}
                 className="bg-secondary border-border" placeholder="أدخل وصفاً…"
               />
+            </div>
+
+            {/* Include in payroll toggle + target month */}
+            <div className="space-y-3 border border-border bg-secondary/40 p-3">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeInPayroll}
+                  onChange={(e) => setIncludeInPayroll(e.target.checked)}
+                  className="h-4 w-4 accent-primary"
+                />
+                <span className="font-medium">تضمين في الرواتب</span>
+              </label>
+              <p className="text-xs text-muted-foreground">
+                عند التفعيل يظهر هذا المصروف كبند استرداد (إضافة) في مسيّر الشهر المحدد.
+              </p>
+              {includeInPayroll && (
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider">شهر الرواتب</Label>
+                  <Input
+                    type="month"
+                    value={payrollMonth}
+                    onChange={(e) => setPayrollMonth(e.target.value)}
+                    className="bg-secondary border-border"
+                    dir="ltr"
+                  />
+                </div>
+              )}
             </div>
           </div>
 

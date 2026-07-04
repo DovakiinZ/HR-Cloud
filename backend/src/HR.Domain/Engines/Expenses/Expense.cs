@@ -18,4 +18,12 @@ public class Expense : TenantEntity
     public string Status { get; set; } = "Approved";   // Approved | Paid | Rejected
     public Guid? RequestInstanceId { get; set; }
     public DateTime DecidedAt { get; set; } = DateTime.UtcNow;
+
+    /// <summary>When true, this expense is picked up by the payroll run whose period covers
+    /// <see cref="PayrollMonth"/> and appears as a reimbursement (earning) line on the payslip.</summary>
+    public bool IncludeInPayroll { get; set; }
+
+    /// <summary>The payroll month this expense should be paid in (first day of the month, UTC).
+    /// Only meaningful when <see cref="IncludeInPayroll"/> is true.</summary>
+    public DateTime? PayrollMonth { get; set; }
 }

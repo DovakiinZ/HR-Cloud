@@ -103,11 +103,13 @@ public sealed class PayrollFactProvider : IPayrollFactProvider
             .ToListAsync(ct))
             .ToDictionary(x => x.EmployeeId, x => x.Total);
 
-        // Approved expenses DECIDED in this period → an EXPENSE reimbursement (earning) line on the payslip.
-        var expEnd = period.End.AddDays(1);
+        // Approved expenses explicitly flagged for payroll whose chosen month (PayrollMonth, 1st of month)
+        // falls in this period → an EXPENSE reimbursement (earning) line on the payslip. Period-bound by
+        // PayrollMonth so an expense is paid exactly once, in the month the user selected.
         var expenseByEmp = (await _db.Expenses.AsNoTracking()
             .Where(e => empIds.Contains(e.EmployeeId) && e.Status == "Approved"
-                        && e.DecidedAt >= period.Start && e.DecidedAt < expEnd)
+                        && e.IncludeInPayroll && e.PayrollMonth != null
+                        && e.PayrollMonth >= period.Start && e.PayrollMonth <= period.End)
             .GroupBy(e => e.EmployeeId)
             .Select(g => new { EmployeeId = g.Key, Total = g.Sum(e => e.Amount) })
             .ToListAsync(ct))

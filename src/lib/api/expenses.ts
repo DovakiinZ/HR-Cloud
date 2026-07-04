@@ -11,6 +11,8 @@ export interface ExpenseRecord {
   receiptUrl?: string | null;
   status: string;
   decidedAt: string;
+  includeInPayroll: boolean;
+  payrollMonth?: string | null;
 }
 
 export const getExpenses = (scope: "mine" | "all" = "all") =>
@@ -23,6 +25,8 @@ export interface CreateExpenseInput {
   currency?: string;
   description?: string | null;
   status?: string;
+  includeInPayroll?: boolean;
+  payrollMonth?: string | null;   // ISO date (1st of the target month), required if includeInPayroll
 }
 
 export const createExpense = (input: CreateExpenseInput) =>
@@ -35,5 +39,7 @@ export const createExpense = (input: CreateExpenseInput) =>
       currency: input.currency || "SAR",
       description: input.description ?? null,
       status: input.status ?? "Approved",
+      includeInPayroll: input.includeInPayroll ?? false,
+      payrollMonth: input.payrollMonth ?? null,
     },
   });

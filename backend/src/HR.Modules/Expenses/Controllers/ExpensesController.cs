@@ -30,6 +30,8 @@ public class ExpensesController : ControllerBase
         public string? ReceiptUrl { get; set; }
         public string Status { get; set; } = null!;
         public DateTime DecidedAt { get; set; }
+        public bool IncludeInPayroll { get; set; }
+        public DateTime? PayrollMonth { get; set; }
     }
 
     /// <summary>List expenses. scope=all (with permission) → everyone; otherwise the caller's own.</summary>
@@ -59,6 +61,7 @@ public class ExpensesController : ControllerBase
                               Category = cat != null ? cat.NameAr : null,
                               Amount = x.Amount, Currency = x.Currency, Description = x.Description,
                               ReceiptUrl = x.ReceiptUrl, Status = x.Status, DecidedAt = x.DecidedAt,
+                              IncludeInPayroll = x.IncludeInPayroll, PayrollMonth = x.PayrollMonth,
                           }).ToListAsync(ct);
         return Ok(ApiResponse<List<ExpenseDto>>.Ok(rows));
     }
@@ -72,6 +75,8 @@ public class ExpensesController : ControllerBase
         public string? Description { get; set; }
         public string? ReceiptUrl { get; set; }
         public string? Status { get; set; }
+        public bool IncludeInPayroll { get; set; }
+        public DateTime? PayrollMonth { get; set; }
     }
 
     /// <summary>Manually create an expense assigned to any employee (HR/Finance action, no request needed).</summary>
@@ -98,6 +103,15 @@ public class ExpensesController : ControllerBase
             if (!exists) return BadRequest(ApiResponse<ExpenseDto>.Fail("فئة المصروف غير صحيحة"));
         }
 
+        // When flagged for payroll the target month is required; normalize it to the 1st of the month (UTC).
+        DateTime? payrollMonth = null;
+        if (body.IncludeInPayroll)
+        {
+            if (body.PayrollMonth is not { } pm)
+                return BadRequest(ApiResponse<ExpenseDto>.Fail("يجب تحديد شهر الرواتب عند التضمين في الرواتب"));
+            payrollMonth = new DateTime(pm.Year, pm.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        }
+
         var status = string.IsNullOrWhiteSpace(body.Status) ? "Approved" : body.Status!.Trim();
         var expense = new Expense
         {
@@ -109,6 +123,8 @@ public class ExpensesController : ControllerBase
             ReceiptUrl = string.IsNullOrWhiteSpace(body.ReceiptUrl) ? null : body.ReceiptUrl!.Trim(),
             Status = status,
             DecidedAt = DateTime.UtcNow,
+            IncludeInPayroll = body.IncludeInPayroll,
+            PayrollMonth = payrollMonth,
         };
         _db.Expenses.Add(expense);
         await _db.SaveChangesAsync(ct);
@@ -124,6 +140,7 @@ public class ExpensesController : ControllerBase
             Category = categoryName,
             Amount = expense.Amount, Currency = expense.Currency, Description = expense.Description,
             ReceiptUrl = expense.ReceiptUrl, Status = expense.Status, DecidedAt = expense.DecidedAt,
+            IncludeInPayroll = expense.IncludeInPayroll, PayrollMonth = expense.PayrollMonth,
         };
         return Ok(ApiResponse<ExpenseDto>.Ok(dto));
     }

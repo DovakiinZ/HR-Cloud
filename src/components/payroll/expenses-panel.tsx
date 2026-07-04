@@ -35,7 +35,7 @@ export function ExpensesPanel() {
       <div className="overflow-x-auto border border-border bg-card">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-border text-right text-xs text-muted-foreground">
-            <Th>الموظف</Th><Th>الفئة</Th><Th>المبلغ</Th><Th>الوصف</Th><Th>الحالة</Th><Th>التاريخ</Th>
+            <Th>الموظف</Th><Th>الفئة</Th><Th>المبلغ</Th><Th>الوصف</Th><Th>الرواتب</Th><Th>الحالة</Th><Th>التاريخ</Th>
           </tr></thead>
           <tbody>
             {rows.map((r) => (
@@ -44,6 +44,11 @@ export function ExpensesPanel() {
                 <Td>{r.category ?? "—"}</Td>
                 <Td className="font-medium tabular-nums">{money(r.amount, r.currency)}</Td>
                 <Td className="max-w-xs truncate text-muted-foreground">{r.description ?? "—"}</Td>
+                <Td>
+                  {r.includeInPayroll
+                    ? <span className="border border-primary/30 bg-primary/10 px-2 py-0.5 text-xs text-primary">{r.payrollMonth?.slice(0, 7) ?? "نعم"}</span>
+                    : <span className="text-xs text-muted-foreground">—</span>}
+                </Td>
                 <Td><span className="border border-green-500/30 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">{r.status}</span></Td>
                 <Td className="text-muted-foreground">{r.decidedAt?.slice(0, 10)}</Td>
               </tr>
