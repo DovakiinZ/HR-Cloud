@@ -39,6 +39,7 @@ public class PayrollController : BaseApiController
     private readonly IPayslipDocumentService _payslips;
     private readonly HR.Application.Engines.Finance.Export.IPayrollExportService _exports;
     private readonly HR.Application.Common.Interfaces.ICurrentUserService _currentUser;
+    private readonly IPayrollRunAmendmentService _amendments;
 
     public PayrollController(ApplicationDbContext db, IPayrollRunEngine runEngine, IPayrollPreviewEngine previewEngine,
         IPayrollExecutionScheduler scheduler, IStandardPayrollSeeder seeder,
@@ -46,11 +47,13 @@ public class PayrollController : BaseApiController
         IPayrollTransactionReversalService reversals, IAttendancePayrollSyncService attendanceSync,
         IPayrollRunReadService runRead, ICreateFromRunService createFromRun, IPayslipDocumentService payslips,
         HR.Application.Engines.Finance.Export.IPayrollExportService exports,
-        HR.Application.Common.Interfaces.ICurrentUserService currentUser)
+        HR.Application.Common.Interfaces.ICurrentUserService currentUser,
+        IPayrollRunAmendmentService amendments)
     {
         _payslips = payslips;
         _exports = exports;
         _currentUser = currentUser;
+        _amendments = amendments;
         _db = db;
         _runEngine = runEngine;
         _previewEngine = previewEngine;
@@ -286,6 +289,26 @@ public class PayrollController : BaseApiController
         if (file is null) return NotFound(ApiResponse.Fail("ملف التصدير غير موجود"));
         return File(file.Value.bytes, file.Value.contentType, file.Value.fileName);
     }
+
+    // ── Void / Amend / Reissue (SP6) ────────────────────────────────────────────────
+
+    [HttpPost("runs/{id:guid}/void")]
+    [RequirePermission("Payroll.Run.Void")]
+    public async Task<ActionResult<ApiResponse>> VoidRun(Guid id, [FromBody] RunReasonRequest req, CancellationToken ct)
+    {
+        await _amendments.VoidAsync(id, req.Reason, ct);
+        return OkResponse("تم إلغاء المسيّر وعكس قيوده.");
+    }
+
+    [HttpPost("runs/{id:guid}/amend")]
+    [RequirePermission("Payroll.Run.Amend")]
+    public async Task<ActionResult<ApiResponse<AmendResult>>> AmendRun(Guid id, [FromBody] RunReasonRequest req, CancellationToken ct)
+        => CreatedResponse(await _amendments.AmendAsync(id, req.Reason, ct));
+
+    [HttpPost("runs/{id:guid}/reissue")]
+    [RequirePermission("Payroll.Run.Reissue")]
+    public async Task<ActionResult<ApiResponse<int>>> ReissueRun(Guid id, CancellationToken ct)
+        => OkResponse(await _amendments.ReissueAsync(id, ct), "تم إعادة إصدار قسائم الرواتب.");
 
     [HttpGet("runs/{id:guid}/calculations")]
     [RequirePermission("Payroll.View")]

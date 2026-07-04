@@ -1,5 +1,11 @@
 namespace HR.Modules.Payroll.DTOs;
 
+/// <summary>A required reason for a run-lifecycle action (void / amend).</summary>
+public sealed class RunReasonRequest
+{
+    public string Reason { get; set; } = string.Empty;
+}
+
 /// <summary>One row of a run's payslip list: the employee identity + totals from the frozen snapshot, and
 /// whether an immutable PDF has been archived yet.</summary>
 public sealed class PayslipRowDto

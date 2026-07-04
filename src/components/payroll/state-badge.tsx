@@ -13,6 +13,7 @@ const STATE_STYLES: Record<string, string> = {
   Archived: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
   Failed: "bg-destructive/10 text-destructive border-destructive/20",
   Cancelled: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20",
+  Voided: "bg-rose-500/10 text-rose-600 border-rose-500/20",
 };
 
 export function StateBadge({ state }: { state: string }) {
