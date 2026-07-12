@@ -46,4 +46,20 @@ public class ComputedFieldEvaluatorTests
         var years = Convert.ToInt32(_eval.Evaluate(ast, row));
         years.Should().BeGreaterThanOrEqualTo(5);
     }
+
+    [Fact]
+    public void YearsBetween_accepts_raw_DateTime_value_from_db_reader()
+    {
+        // Production data path: DB reader materializes hireDate as a raw DateTime object,
+        // NOT a pre-formatted string. NormalizeDateValues() must convert it before evaluation.
+        var ast = new FunctionCallExpr("yearsBetween", new List<Expr>
+        {
+            Var("hireDate"), new FunctionCallExpr("today", new List<Expr>())
+        });
+        // Raw DateTime — exactly what a SqlDataReader / NpgsqlDataReader hands back
+        var row = new Dictionary<string, object?> { ["hireDate"] = new DateTime(2020, 7, 12) };
+        var years = Convert.ToInt32(_eval.Evaluate(ast, row));
+        // 2020-07-12 → today (2026-07-12) = exactly 6 years; allow ≥5 for minor clock skew in CI
+        years.Should().BeGreaterThanOrEqualTo(5);
+    }
 }

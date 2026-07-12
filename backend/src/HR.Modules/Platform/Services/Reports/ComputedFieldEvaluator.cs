@@ -1,3 +1,4 @@
+using System.Globalization;
 using HR.Domain.Engines.Finance.Expressions;
 
 namespace HR.Modules.Platform.Services.Reports;
@@ -25,9 +26,37 @@ public sealed class ComputedFieldEvaluator
     /// <summary>Evaluates the AST against the row and returns a CLR value (decimal, string, bool, or null).</summary>
     public object? Evaluate(Expr ast, IReadOnlyDictionary<string, object?> row)
     {
-        var ctx = MutableEvaluationContext.FromFacts(row);
+        // Normalize date-like CLR values to ISO-8601 strings so age()/yearsBetween() can parse them back.
+        // RuleValue.From() has no DateTime arm and would fall through to locale-dependent ToString().
+        var normalized = NormalizeDateValues(row);
+        var ctx = MutableEvaluationContext.FromFacts(normalized);
         var result = _evaluator.Evaluate(ast, ctx);
         return ToClr(result);
+    }
+
+    /// <summary>
+    /// Projects the row into a new dictionary with date-like CLR values converted to ISO-8601 strings.
+    /// All other values are passed through unchanged.
+    /// </summary>
+    private static IReadOnlyDictionary<string, object?> NormalizeDateValues(IReadOnlyDictionary<string, object?> row)
+    {
+        Dictionary<string, object?>? normalized = null;
+        foreach (var kv in row)
+        {
+            string? iso = kv.Value switch
+            {
+                DateTime dt => dt.ToString("O", CultureInfo.InvariantCulture),
+                DateTimeOffset dto => dto.ToString("O", CultureInfo.InvariantCulture),
+                DateOnly d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                _ => null,
+            };
+            if (iso is not null)
+            {
+                normalized ??= new Dictionary<string, object?>(row);
+                normalized[kv.Key] = iso;
+            }
+        }
+        return normalized ?? row;
     }
 
     private static object? ToClr(RuleValue v) => v.Kind switch
@@ -40,7 +69,8 @@ public sealed class ComputedFieldEvaluator
     };
 
     /// <summary>
-    /// Default finance built-ins + report helpers: today, now, age, yearsBetween, concat, coalesce, round.
+    /// Default finance built-ins + report helpers: today, now, age, yearsBetween, concat, round.
+    /// coalesce/COALESCE is already registered by FunctionRegistry.CreateDefault() (case-insensitive lookup).
     /// Dates are represented as ISO-8601 text values (no Date RuleValueKind exists in this engine version).
     /// </summary>
     public static FunctionRegistry ReportFunctions()
@@ -72,13 +102,8 @@ public sealed class ComputedFieldEvaluator
         reg.Register("concat", args =>
             RuleValue.Text(string.Concat(args.Select(v => v.AsText()))));
 
-        // coalesce(a, b, …) → first non-null argument (alias for engine's COALESCE, lowercase)
-        reg.Register("coalesce", args =>
-        {
-            foreach (var a in args)
-                if (!a.IsNull) return a;
-            return RuleValue.Null;
-        });
+        // coalesce is already registered as COALESCE by FunctionRegistry.CreateDefault() with a proper
+        // arity guard, and the registry lookup is case-insensitive — no custom registration needed.
 
         // round(value, digits) → rounded number
         reg.Register("round", args =>
