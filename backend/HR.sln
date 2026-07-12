@@ -55,6 +55,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{827E0CD3-B72
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HR.Domain.Finance.Tests", "tests\HR.Domain.Finance.Tests\HR.Domain.Finance.Tests.csproj", "{31CAA64A-2DDE-4FD8-A9CB-F7DDD63CAC20}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HR.Modules.Platform.Tests", "tests\HR.Modules.Platform.Tests\HR.Modules.Platform.Tests.csproj", "{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -353,6 +355,18 @@ Global
 		{31CAA64A-2DDE-4FD8-A9CB-F7DDD63CAC20}.Release|x64.Build.0 = Release|Any CPU
 		{31CAA64A-2DDE-4FD8-A9CB-F7DDD63CAC20}.Release|x86.ActiveCfg = Release|Any CPU
 		{31CAA64A-2DDE-4FD8-A9CB-F7DDD63CAC20}.Release|x86.Build.0 = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|x64.Build.0 = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Debug|x86.Build.0 = Debug|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|x64.ActiveCfg = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|x64.Build.0 = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|x86.ActiveCfg = Release|Any CPU
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -361,5 +375,6 @@ Global
 		{4B6DB4E4-D7E5-4FD6-B1A9-3782E9BACCE7} = {3615F0A8-60C2-417C-B51E-59BB5B5BBA5C}
 		{8A7F04B2-99B0-40DC-B215-0D3EC2E5BF07} = {3615F0A8-60C2-417C-B51E-59BB5B5BBA5C}
 		{31CAA64A-2DDE-4FD8-A9CB-F7DDD63CAC20} = {3615F0A8-60C2-417C-B51E-59BB5B5BBA5C}
+		{7CEFD0D2-9BB9-4030-92EE-82940EBD1BCE} = {3615F0A8-60C2-417C-B51E-59BB5B5BBA5C}
 	EndGlobalSection
 EndGlobal
