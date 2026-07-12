@@ -86,6 +86,16 @@ public sealed class ReportObjectResolver : IReportObjectResolver
             query.Columns.Add(new ReportColumnModel { TableAlias = AliasFor(f.ObjectDefinitionId), Field = rf, OutputCode = f.FieldCode });
         }
 
+        // 3b. Guard against duplicate OutputCode (case-insensitive) among SQL columns.
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var col in query.Columns)
+        {
+            if (!seen.Add(col.OutputCode))
+                throw Invalid("field",
+                    $"Report has duplicate field code '{col.OutputCode}' across selected objects; " +
+                    "a report cannot select two fields with the same code in R1.");
+        }
+
         // 4. Filters — object-field filters push to SQL; unknown field codes are silently ignored.
         foreach (var flt in report.Filters)
         {

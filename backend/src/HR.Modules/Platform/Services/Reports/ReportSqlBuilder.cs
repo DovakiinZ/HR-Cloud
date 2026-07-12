@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using FluentValidation;
+using FluentValidation.Results;
 using HR.Domain.Enums;
 using HR.Modules.Platform.Services.Catalog;
 
@@ -94,7 +96,13 @@ public static class ReportSqlBuilder
             if (t == typeof(DateOnly)) return DateOnly.Parse(raw, CultureInfo.InvariantCulture);
             return raw;
         }
-        catch { return raw; }   // upstream validation should prevent this; fall back to raw string
+        catch
+        {
+            throw new ValidationException(new[]
+            {
+                new ValidationFailure("filter", $"Invalid value '{raw}' for field '{field.Code}'.")
+            });
+        }
     }
 
     private static string TableRef(ResolvedObject o) => o.Schema is { Length: > 0 } s ? $"{Q(s)}.{Q(o.TableName)}" : Q(o.TableName);

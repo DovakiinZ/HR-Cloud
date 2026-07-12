@@ -35,7 +35,10 @@ public sealed class ReportRowShaper
         // 1. Computed columns
         foreach (var row in working)
             foreach (var c in spec.Computed)
-                row[c.Code] = _evaluator.Evaluate(c.Ast, row);
+            {
+                try { row[c.Code] = _evaluator.Evaluate(c.Ast, row); }
+                catch (HR.Domain.Engines.Finance.Expressions.ExpressionException) { row[c.Code] = null; }
+            }
 
         // 2. In-memory sorts (needed for computed-field sorts; harmless for object fields)
         IEnumerable<ReportRow> sorted = working;

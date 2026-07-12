@@ -1,4 +1,5 @@
 using FluentAssertions;
+using HR.Domain.Engines.Finance.Expressions;
 using HR.Domain.Enums;
 using HR.Modules.Platform.Services.Reports;
 using Xunit;
@@ -114,6 +115,35 @@ public class ReportRowShaperTests
 
         // Grand total
         result.GrandTotals["Salary"].Should().Be(18_000);
+    }
+
+    /// <summary>
+    /// A computed column whose AST references a variable that is NOT present in the row
+    /// must NOT throw — the cell should be silently set to null so the rest of the report renders.
+    /// </summary>
+    [Fact]
+    public void Computed_column_with_unknown_variable_sets_cell_to_null_and_does_not_throw()
+    {
+        // Build an AST that references a variable "NonExistentField" — not in the row.
+        var badAst = new VariableExpr("NonExistentField");
+
+        var spec = new ReportShapeSpec
+        {
+            ReportCode = "COMPUTED_FAULT",
+            Columns = new() { new ReportColumn { Code = "Salary", Label = "Salary", Type = "Number" } },
+            Computed = new() { new ComputedColumnSpec { Code = "Bonus", Ast = badAst } },
+            GroupByCodes = new(),
+            Page = 1, PageSize = 50,
+        };
+
+        var rows = new List<ReportRow> { new() { ["Salary"] = 5000m } };
+
+        ReportResult result = default!;
+        var act = () => { result = _shaper.Shape(rows, spec); };
+
+        act.Should().NotThrow();
+        result.Rows.Should().HaveCount(1);
+        result.Rows[0].GetValueOrDefault("Bonus").Should().BeNull("a formula error must yield null, not throw");
     }
 
     /// <summary>

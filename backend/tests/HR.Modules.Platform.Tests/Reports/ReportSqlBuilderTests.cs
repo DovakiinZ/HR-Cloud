@@ -1,4 +1,5 @@
 using FluentAssertions;
+using FluentValidation;
 using HR.Domain.Enums;
 using HR.Modules.Platform.Services.Catalog;
 using HR.Modules.Platform.Services.Reports;
@@ -71,5 +72,23 @@ public class ReportSqlBuilderTests
         m.Sorts.Add(new ReportSortModel { TableAlias = "t0", Field = Employee().Fields["Salary"], Direction = SortDirection.Descending });
         var (sql, _) = ReportSqlBuilder.Build(m, Guid.NewGuid(), 100);
         sql.Should().Contain("ORDER BY t0.\"BasicSalary\" DESC");
+    }
+
+    [Fact]
+    public void Non_numeric_value_on_numeric_field_throws_ValidationException()
+    {
+        var m = BaseModel();
+        m.Filters.Add(new ReportFilterModel
+        {
+            TableAlias = "t0",
+            Field = Employee().Fields["Salary"],  // FieldKind.Number, ClrType = int
+            Operator = ReportFilterOperator.GreaterThan,
+            Value = "abc"   // non-numeric → should throw, not silently pass raw string to DB
+        });
+
+        FluentActions.Invoking(() => ReportSqlBuilder.Build(m, Guid.NewGuid(), rowCap: 100))
+            .Should().Throw<ValidationException>()
+            .Which.Errors.Should().ContainSingle(e =>
+                e.PropertyName == "filter" && e.ErrorMessage.Contains("abc") && e.ErrorMessage.Contains("Salary"));
     }
 }
