@@ -44,6 +44,12 @@ public static class DependencyInjection
         services.AddScoped<ILookupService, LookupService>();
         services.AddScoped<IUsageTrackingService, UsageTrackingService>();
 
+        // Reports Engine — object resolver + execution pipeline
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportObjectResolver,
+            HR.Modules.Platform.Services.Reports.ReportObjectResolver>();
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportExecutionService,
+            HR.Modules.Platform.Services.Reports.ReportExecutionService>();
+
         // Dashboard Platform — object-driven discovery + aggregation + seeding
         services.AddScoped<HR.Modules.Platform.Services.Catalog.IObjectCatalogService,
             HR.Modules.Platform.Services.Catalog.ObjectCatalogService>();

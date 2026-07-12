@@ -3,10 +3,21 @@ using HR.Application.Common.Models;
 using HR.Domain.Engines.Reports;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.DTOs.Reports;
+using HR.Modules.Platform.Services.Reports;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Platform.Queries.Reports;
+
+public record RunReportQuery(Guid Id, int Page, int PageSize) : IRequest<ReportResult>;
+
+public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResult>
+{
+    private readonly IReportExecutionService _exec;
+    public RunReportQueryHandler(IReportExecutionService exec) => _exec = exec;
+    public Task<ReportResult> Handle(RunReportQuery request, CancellationToken ct)
+        => _exec.RunAsync(request.Id, request.Page, request.PageSize, ct);
+}
 
 public record GetReportsQuery : IRequest<PaginatedList<ReportDefinitionDto>>
 {

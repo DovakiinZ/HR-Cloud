@@ -4,6 +4,7 @@ using HR.Application.Common.Models;
 using HR.Modules.Platform.Commands.Reports;
 using HR.Modules.Platform.DTOs.Reports;
 using HR.Modules.Platform.Queries.Reports;
+using HR.Modules.Platform.Services.Reports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -37,6 +38,11 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.Delete")]
     public async Task<ActionResult<ApiResponse>> Delete(Guid id, CancellationToken ct)
     { await Mediator.Send(new DeleteReportCommand(id), ct); return OkResponse("Report deleted"); }
+
+    [HttpPost("{id:guid}/run")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<ReportResult>>> Run(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    { var result = await Mediator.Send(new RunReportQuery(id, page, pageSize), ct); return OkResponse(result); }
 
     [HttpPost("{id:guid}/publish")]
     [RequirePermission("Platform.Reports.Edit")]
