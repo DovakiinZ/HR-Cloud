@@ -87,3 +87,12 @@ public sealed class ReportSortModel
     public ResolvedField Field { get; set; } = null!;
     public SortDirection Direction { get; set; }
 }
+
+public sealed class ReportExecutionModel
+{
+    public ReportQueryModel Query { get; set; } = null!;
+    public List<ComputedColumnSpec> Computed { get; set; } = new();
+    public List<string> GroupByCodes { get; set; } = new();
+    public List<(string Code, HR.Domain.Enums.SortDirection Dir)> InMemorySorts { get; set; } = new();
+    public List<ReportColumn> OutputColumns { get; set; } = new();
+}
