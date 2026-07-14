@@ -4,7 +4,7 @@ namespace HR.Application.Engines.Finance.Export;
 
 /// <summary>The output formats the export engine can render. A new format is a new IExportWriter; the
 /// report providers and bank pipeline never change.</summary>
-public enum ExportFormat { Excel = 1, Csv = 2, Txt = 3, Xml = 4 }
+public enum ExportFormat { Excel = 1, Csv = 2, Txt = 3, Xml = 4, Pdf = 5 }
 
 public enum TabularAlign { Start, End, Center }
 
