@@ -51,6 +51,10 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Reports.ReportExecutionService>();
         services.AddScoped<HR.Modules.Platform.Services.Reports.IReportAccessService,
             HR.Modules.Platform.Services.Reports.ReportAccessService>();
+        services.AddSingleton<HR.Application.Engines.Finance.Export.IExportWriter,
+            HR.Modules.Platform.Services.Reports.PdfExportWriter>();
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportExportService,
+            HR.Modules.Platform.Services.Reports.ReportExportService>();
 
         // Dashboard Platform — object-driven discovery + aggregation + seeding
         services.AddScoped<HR.Modules.Platform.Services.Catalog.IObjectCatalogService,
