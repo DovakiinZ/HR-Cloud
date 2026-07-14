@@ -182,4 +182,15 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.Edit")]
     public async Task<ActionResult<ApiResponse>> UnassignTag(Guid id, Guid tagId, CancellationToken ct)
     { await Mediator.Send(new UnassignReportTagCommand(id, tagId), ct); return OkResponse("Tag unassigned"); }
+
+    // User State
+    [HttpPost("{id:guid}/favorite")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<bool>>> ToggleFavorite(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new ToggleReportFavoriteCommand(id), ct); return OkResponse(result); }
+
+    [HttpPost("{id:guid}/pin")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<bool>>> TogglePin(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new ToggleReportPinCommand(id), ct); return OkResponse(result); }
 }
