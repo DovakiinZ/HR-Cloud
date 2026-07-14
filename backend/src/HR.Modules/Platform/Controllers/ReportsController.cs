@@ -44,6 +44,14 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse<ReportResult>>> Run(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
     { var result = await Mediator.Send(new RunReportQuery(id, page, pageSize), ct); return OkResponse(result); }
 
+    [HttpGet("{id:guid}/export")]
+    [RequirePermission("Platform.Reports.Export")]
+    public async Task<IActionResult> Export(Guid id, [FromQuery] string format = "excel", CancellationToken ct = default)
+    {
+        var file = await Mediator.Send(new ExportReportQuery(id, format), ct);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
+
     [HttpPost("{id:guid}/publish")]
     [RequirePermission("Platform.Reports.Edit")]
     public async Task<ActionResult<ApiResponse<ReportDefinitionDto>>> Publish(Guid id, CancellationToken ct)
