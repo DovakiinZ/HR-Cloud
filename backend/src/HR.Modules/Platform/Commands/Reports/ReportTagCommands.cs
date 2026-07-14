@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoMapper;
+using FluentValidation.Results;
 using HR.Application.Common.Exceptions;
 using HR.Domain.Engines.Reports;
 using HR.Infrastructure.Persistence;
@@ -24,6 +25,8 @@ public class CreateReportTagCommandHandler : IRequestHandler<CreateReportTagComm
     public CreateReportTagCommandHandler(ApplicationDbContext db, IMapper mapper) { _db = db; _mapper = mapper; }
     public async Task<ReportTagDto> Handle(CreateReportTagCommand r, CancellationToken ct)
     {
+        var dup = await _db.ReportTags.AnyAsync(t => t.Name == r.Name, ct);
+        if (dup) throw new ValidationException(new[] { new ValidationFailure("Name", $"A tag named '{r.Name}' already exists.") });
         var e = new ReportTag { Id = Guid.NewGuid(), Name = r.Name, Color = r.Color };
         _db.ReportTags.Add(e); await _db.SaveChangesAsync(ct);
         return _mapper.Map<ReportTagDto>(e);
@@ -51,6 +54,8 @@ public class AssignReportTagCommandHandler : IRequestHandler<AssignReportTagComm
     public async Task Handle(AssignReportTagCommand r, CancellationToken ct)
     {
         await _access.EnsureCanEditAsync(r.ReportDefinitionId, ct);
+        var tagExists = await _db.ReportTags.AnyAsync(t => t.Id == r.ReportTagId, ct);
+        if (!tagExists) throw new NotFoundException("ReportTag", r.ReportTagId);
         var exists = await _db.ReportDefinitionTags.AnyAsync(l => l.ReportDefinitionId == r.ReportDefinitionId && l.ReportTagId == r.ReportTagId, ct);
         if (!exists)
         {
