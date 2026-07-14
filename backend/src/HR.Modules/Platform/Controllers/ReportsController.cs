@@ -109,6 +109,22 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteSchedule(Guid scheduleId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportScheduleCommand(scheduleId), ct); return OkResponse("Schedule removed"); }
 
+    // Shares
+    [HttpGet("{id:guid}/shares")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportShareDto>>>> GetShares(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportSharesQuery(id), ct); return OkResponse(result); }
+
+    [HttpPost("{id:guid}/shares")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse<ReportShareDto>>> AddShare(Guid id, [FromBody] AddReportShareCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command with { ReportDefinitionId = id }, ct); return CreatedResponse(result); }
+
+    [HttpDelete("{id:guid}/shares/{shareId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> RemoveShare(Guid id, Guid shareId, CancellationToken ct)
+    { await Mediator.Send(new RemoveReportShareCommand(id, shareId), ct); return OkResponse("Share removed"); }
+
     // Templates
     [HttpGet("templates")]
     [RequirePermission("Platform.Reports.View")]
