@@ -20,3 +20,14 @@ public class GetReportFoldersQueryHandler : IRequestHandler<GetReportFoldersQuer
     public async Task<List<ReportFolderDto>> Handle(GetReportFoldersQuery q, CancellationToken ct)
         => _mapper.Map<List<ReportFolderDto>>(await _db.ReportFolders.OrderBy(f => f.NameEn).ToListAsync(ct));
 }
+
+// D2: Tags query
+public record GetReportTagsQuery : IRequest<List<ReportTagDto>>;
+
+public class GetReportTagsQueryHandler : IRequestHandler<GetReportTagsQuery, List<ReportTagDto>>
+{
+    private readonly ApplicationDbContext _db; private readonly IMapper _mapper;
+    public GetReportTagsQueryHandler(ApplicationDbContext db, IMapper mapper) { _db = db; _mapper = mapper; }
+    public async Task<List<ReportTagDto>> Handle(GetReportTagsQuery q, CancellationToken ct)
+        => _mapper.Map<List<ReportTagDto>>(await _db.ReportTags.OrderBy(t => t.Name).ToListAsync(ct));
+}

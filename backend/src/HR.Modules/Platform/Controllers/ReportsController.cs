@@ -156,4 +156,30 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.Edit")]
     public async Task<ActionResult<ApiResponse>> DeleteFolder(Guid folderId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportFolderCommand(folderId), ct); return OkResponse("Folder deleted"); }
+
+    // Tags
+    [HttpGet("tags")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportTagDto>>>> GetTags(CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportTagsQuery(), ct); return OkResponse(result); }
+
+    [HttpPost("tags")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse<ReportTagDto>>> CreateTag([FromBody] CreateReportTagCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command, ct); return CreatedResponse(result); }
+
+    [HttpDelete("tags/{tagId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> DeleteTag(Guid tagId, CancellationToken ct)
+    { await Mediator.Send(new DeleteReportTagCommand(tagId), ct); return OkResponse("Tag deleted"); }
+
+    [HttpPost("{id:guid}/tags/{tagId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> AssignTag(Guid id, Guid tagId, CancellationToken ct)
+    { await Mediator.Send(new AssignReportTagCommand(id, tagId), ct); return OkResponse("Tag assigned"); }
+
+    [HttpDelete("{id:guid}/tags/{tagId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> UnassignTag(Guid id, Guid tagId, CancellationToken ct)
+    { await Mediator.Send(new UnassignReportTagCommand(id, tagId), ct); return OkResponse("Tag unassigned"); }
 }
