@@ -48,6 +48,20 @@ public class ReportVisibilityPredicateTests
     }
 
     [Fact]
+    public void Null_department_context_excludes_department_shared_report()
+    {
+        var ctx = new ReportAccessContext
+        {
+            UserId = Me,
+            DepartmentId = null,
+            RoleIds = new HashSet<Guid>(),
+        };
+        var byDept = Report(Other, ReportScope.Personal, new ReportShare { SharedWithDepartmentId = Guid.NewGuid() });
+        var reports = new[] { byDept }.AsQueryable();
+        reports.Where(ReportVisibilityPredicate.Build(ctx)).Should().BeEmpty();
+    }
+
+    [Fact]
     public void User_role_and_department_shares_grant_visibility()
     {
         var byUser = Report(Other, ReportScope.Personal, new ReportShare { SharedWithUserId = Me });

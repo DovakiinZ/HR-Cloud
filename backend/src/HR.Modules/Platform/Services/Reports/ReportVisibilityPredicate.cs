@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Linq.Expressions;
 using HR.Domain.Engines.Reports;
 using HR.Domain.Enums;
@@ -16,7 +18,7 @@ public static class ReportVisibilityPredicate
     {
         var uid = ctx.UserId;
         var dept = ctx.DepartmentId;
-        var roleIds = ctx.RoleIds; // captured; EF translates Contains to IN (...)
+        var roleIds = ctx.RoleIds.ToList(); // List<Guid> — EF/Npgsql reliably translates Contains to SQL IN (...)
         return r =>
             r.OwnerId == uid
             || r.Scope == ReportScope.Company
