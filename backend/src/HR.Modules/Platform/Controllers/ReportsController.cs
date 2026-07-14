@@ -135,4 +135,25 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.Create")]
     public async Task<ActionResult<ApiResponse<ReportTemplateDto>>> CreateTemplate([FromBody] CreateReportTemplateCommand command, CancellationToken ct)
     { var result = await Mediator.Send(command, ct); return CreatedResponse(result); }
+
+    // Folders
+    [HttpGet("folders")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportFolderDto>>>> GetFolders(CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportFoldersQuery(), ct); return OkResponse(result); }
+
+    [HttpPost("folders")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse<ReportFolderDto>>> CreateFolder([FromBody] CreateReportFolderCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command, ct); return CreatedResponse(result); }
+
+    [HttpPut("folders/{folderId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse<ReportFolderDto>>> UpdateFolder(Guid folderId, [FromBody] UpdateReportFolderCommand command, CancellationToken ct)
+    { if (folderId != command.Id) return BadRequest(); var result = await Mediator.Send(command, ct); return OkResponse(result); }
+
+    [HttpDelete("folders/{folderId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> DeleteFolder(Guid folderId, CancellationToken ct)
+    { await Mediator.Send(new DeleteReportFolderCommand(folderId), ct); return OkResponse("Folder deleted"); }
 }

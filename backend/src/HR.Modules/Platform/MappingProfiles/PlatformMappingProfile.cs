@@ -125,6 +125,8 @@ public class PlatformMappingProfile : Profile
         CreateMap<ReportSorting, ReportSortingDto>();
         CreateMap<ReportSchedule, ReportScheduleDto>();
         CreateMap<ReportShare, ReportShareDto>();
+        CreateMap<ReportFolder, ReportFolderDto>();
+        CreateMap<ReportTag, ReportTagDto>();
 
         // Documents
         CreateMap<DocumentTemplate, DocumentTemplateDto>();
