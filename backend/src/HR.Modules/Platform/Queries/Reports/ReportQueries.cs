@@ -14,9 +14,14 @@ public record RunReportQuery(Guid Id, int Page, int PageSize) : IRequest<ReportR
 public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResult>
 {
     private readonly IReportExecutionService _exec;
-    public RunReportQueryHandler(IReportExecutionService exec) => _exec = exec;
-    public Task<ReportResult> Handle(RunReportQuery request, CancellationToken ct)
-        => _exec.RunAsync(request.Id, request.Page, request.PageSize, ct);
+    private readonly IReportAccessService _access;
+    public RunReportQueryHandler(IReportExecutionService exec, IReportAccessService access)
+    { _exec = exec; _access = access; }
+    public async Task<ReportResult> Handle(RunReportQuery request, CancellationToken ct)
+    {
+        await _access.EnsureCanReadAsync(request.Id, ct);
+        return await _exec.RunAsync(request.Id, request.Page, request.PageSize, ct);
+    }
 }
 
 public record GetReportsQuery : IRequest<PaginatedList<ReportDefinitionDto>>
@@ -32,24 +37,33 @@ public record GetReportTemplatesQuery : IRequest<List<ReportTemplateDto>>;
 
 public class GetReportsQueryHandler : IRequestHandler<GetReportsQuery, PaginatedList<ReportDefinitionDto>>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public GetReportsQueryHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public GetReportsQueryHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access)
+    { _context = context; _mapper = mapper; _access = access; }
     public async Task<PaginatedList<ReportDefinitionDto>> Handle(GetReportsQuery request, CancellationToken ct)
     {
-        var query = _context.Set<ReportDefinition>().Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).AsQueryable();
-        if (!string.IsNullOrEmpty(request.Search)) query = query.Where(r => r.NameEn.Contains(request.Search) || r.NameAr.Contains(request.Search));
+        var baseQuery = _context.Set<ReportDefinition>()
+            .Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters)
+            .Include(r => r.Groupings).Include(r => r.Sortings).Include(r => r.Shares)
+            .AsQueryable();
+        var query = await _access.FilterVisibleAsync(baseQuery, ct);
+        if (!string.IsNullOrEmpty(request.Search))
+            query = query.Where(r => r.NameEn.Contains(request.Search) || r.NameAr.Contains(request.Search));
         var totalCount = await query.CountAsync(ct);
-        var items = await query.OrderByDescending(r => r.CreatedAt).Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
+        var items = await query.OrderByDescending(r => r.CreatedAt)
+            .Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
         return new PaginatedList<ReportDefinitionDto> { Items = _mapper.Map<List<ReportDefinitionDto>>(items), PageNumber = request.PageNumber, PageSize = request.PageSize, TotalCount = totalCount };
     }
 }
 
 public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public GetReportByIdQueryHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public GetReportByIdQueryHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access)
+    { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportDefinitionDto> Handle(GetReportByIdQuery request, CancellationToken ct)
     {
+        await _access.EnsureCanReadAsync(request.Id, ct);
         var entity = await _context.Set<ReportDefinition>().Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).FirstOrDefaultAsync(r => r.Id == request.Id, ct) ?? throw new HR.Application.Common.Exceptions.NotFoundException("ReportDefinition", request.Id);
         return _mapper.Map<ReportDefinitionDto>(entity);
     }

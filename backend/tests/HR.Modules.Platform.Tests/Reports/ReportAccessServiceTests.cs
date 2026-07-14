@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using HR.Application.Common.Interfaces;
+using HR.Domain.Engines.Reports;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Identity.Entities;
@@ -58,6 +59,29 @@ public class ReportAccessServiceTests
         ctx.RoleIds.Should().Contain(roleId);
         ctx.DepartmentId.Should().Be(deptId);
 
+        await tx.RollbackAsync();
+    }
+
+    [SkippableFact]
+    public async Task FilterVisible_excludes_foreign_personal_report()
+    {
+        Skip.If(string.IsNullOrWhiteSpace(Conn), "Set REPORTS_TEST_DB to run.");
+        var tenant = Guid.NewGuid();
+        var userId = Guid.NewGuid();
+        var user = new StubUser(userId, tenant);
+        var opts = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(Conn).Options;
+        await using var db = new ApplicationDbContext(opts, user);
+        await using var tx = await db.Database.BeginTransactionAsync();
+
+        var mine = new ReportDefinition { Id = Guid.NewGuid(), TenantId = tenant, Code = "M"+Guid.NewGuid().ToString("N")[..6], NameEn="mine", NameAr="لي", OwnerId = userId, Scope = ReportScope.Personal, PrimaryObjectId = Guid.NewGuid() };
+        var foreign = new ReportDefinition { Id = Guid.NewGuid(), TenantId = tenant, Code = "F"+Guid.NewGuid().ToString("N")[..6], NameEn="foreign", NameAr="غريب", OwnerId = Guid.NewGuid(), Scope = ReportScope.Personal, PrimaryObjectId = Guid.NewGuid() };
+        db.Set<ReportDefinition>().AddRange(mine, foreign);
+        await db.SaveChangesAsync();
+
+        var svc = new ReportAccessService(db, user);
+        var visible = await (await svc.FilterVisibleAsync(db.Set<ReportDefinition>(), default)).ToListAsync();
+
+        visible.Select(r => r.Id).Should().Contain(mine.Id).And.NotContain(foreign.Id);
         await tx.RollbackAsync();
     }
 }
