@@ -49,6 +49,8 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Reports.ReportObjectResolver>();
         services.AddScoped<HR.Modules.Platform.Services.Reports.IReportExecutionService,
             HR.Modules.Platform.Services.Reports.ReportExecutionService>();
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportAccessService,
+            HR.Modules.Platform.Services.Reports.ReportAccessService>();
 
         // Dashboard Platform — object-driven discovery + aggregation + seeding
         services.AddScoped<HR.Modules.Platform.Services.Catalog.IObjectCatalogService,
