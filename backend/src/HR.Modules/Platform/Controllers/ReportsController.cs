@@ -157,6 +157,11 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteFolder(Guid folderId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportFolderCommand(folderId), ct); return OkResponse("Folder deleted"); }
 
+    [HttpPut("{id:guid}/folder")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> SetFolder(Guid id, [FromBody] SetReportFolderCommand command, CancellationToken ct)
+    { await Mediator.Send(command with { ReportDefinitionId = id }, ct); return OkResponse("Report folder updated"); }
+
     // Tags
     [HttpGet("tags")]
     [RequirePermission("Platform.Reports.View")]

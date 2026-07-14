@@ -7,6 +7,7 @@ using HR.Application.Common.Exceptions;
 using HR.Domain.Engines.Reports;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.DTOs.Reports;
+using HR.Modules.Platform.Services.Reports;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -52,6 +53,28 @@ public class DeleteReportFolderCommandHandler : IRequestHandler<DeleteReportFold
         var reports = await _db.Set<ReportDefinition>().Where(rd => rd.FolderId == r.Id).ToListAsync(ct);
         foreach (var rd in reports) rd.FolderId = null;
         _db.ReportFolders.Remove(e);
+        await _db.SaveChangesAsync(ct);
+    }
+}
+
+public record SetReportFolderCommand(Guid ReportDefinitionId, Guid? FolderId) : IRequest;
+
+public class SetReportFolderCommandHandler : IRequestHandler<SetReportFolderCommand>
+{
+    private readonly ApplicationDbContext _db;
+    private readonly IReportAccessService _access;
+    public SetReportFolderCommandHandler(ApplicationDbContext db, IReportAccessService access) { _db = db; _access = access; }
+    public async Task Handle(SetReportFolderCommand request, CancellationToken ct)
+    {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
+        if (request.FolderId is { } fid)
+        {
+            var folderExists = await _db.ReportFolders.AnyAsync(f => f.Id == fid, ct);
+            if (!folderExists) throw new NotFoundException("ReportFolder", fid);
+        }
+        var report = await _db.Set<ReportDefinition>().FirstOrDefaultAsync(r => r.Id == request.ReportDefinitionId, ct)
+            ?? throw new NotFoundException("ReportDefinition", request.ReportDefinitionId);
+        report.FolderId = request.FolderId;
         await _db.SaveChangesAsync(ct);
     }
 }
