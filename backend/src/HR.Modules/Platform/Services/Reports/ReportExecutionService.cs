@@ -31,12 +31,19 @@ public sealed class ReportExecutionService : IReportExecutionService
         _resolver = resolver;
     }
 
-    public async Task<ReportResult> RunAsync(Guid reportId, int page, int pageSize, CancellationToken ct)
-    {
-        // Clamp paging parameters.
-        page = Math.Max(1, page);
-        pageSize = Math.Clamp(pageSize, 1, 200);
+    public Task<ReportResult> RunAsync(Guid reportId, int page, int pageSize, CancellationToken ct)
+        => RunCoreAsync(reportId, Math.Max(1, page), Math.Clamp(pageSize, 1, 200), ct);
 
+    /// <inheritdoc cref="IReportExecutionService.RunForExportAsync"/>
+    public Task<ReportResult> RunForExportAsync(Guid reportId, CancellationToken ct)
+        => RunCoreAsync(reportId, 1, RowCap, ct);
+
+    /// <summary>
+    /// Shared execution pipeline. Callers are responsible for validating/clamping
+    /// <paramref name="page"/> and <paramref name="pageSize"/> before invoking.
+    /// </summary>
+    private async Task<ReportResult> RunCoreAsync(Guid reportId, int page, int pageSize, CancellationToken ct)
+    {
         // 1. Load the report definition with all child collections.
         var report = await _db.Set<ReportDefinition>().AsNoTracking()
             .Include(r => r.Fields)
