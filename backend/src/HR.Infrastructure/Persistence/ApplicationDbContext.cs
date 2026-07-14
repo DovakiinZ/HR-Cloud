@@ -165,6 +165,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<ReportSorting> ReportSortings => Set<ReportSorting>();
     public DbSet<ReportSchedule> ReportSchedules => Set<ReportSchedule>();
     public DbSet<ReportShare> ReportShares => Set<ReportShare>();
+    public DbSet<ReportFolder> ReportFolders => Set<ReportFolder>();
+    public DbSet<ReportTag> ReportTags => Set<ReportTag>();
+    public DbSet<ReportDefinitionTag> ReportDefinitionTags => Set<ReportDefinitionTag>();
+    public DbSet<ReportUserState> ReportUserStates => Set<ReportUserState>();
 
     // Document Engine
     public DbSet<DocumentTemplate> DocumentTemplates => Set<DocumentTemplate>();

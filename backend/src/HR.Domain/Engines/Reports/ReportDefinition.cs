@@ -13,6 +13,7 @@ public class ReportDefinition : TenantEntity
     public ReportScope Scope { get; set; } = ReportScope.Personal;
     public Guid? OwnerId { get; set; }
     public Guid? TemplateId { get; set; }
+    public Guid? FolderId { get; set; }
     public Guid PrimaryObjectId { get; set; } // Main object for report
     public bool IsPublished { get; set; }
     public bool IsActive { get; set; } = true;
