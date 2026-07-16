@@ -19,12 +19,12 @@ public class ObjectCatalogController : BaseApiController
     public ObjectCatalogController(IObjectCatalogService catalog) => _catalog = catalog;
 
     [HttpGet("objects")]
-    [RequirePermission("Platform.Dashboards.View")]
+    [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
     public ActionResult<ApiResponse<List<CatalogObjectDto>>> GetObjects()
         => OkResponse(_catalog.GetCatalog().ToList());
 
     [HttpGet("objects/{code}")]
-    [RequirePermission("Platform.Dashboards.View")]
+    [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
     public ActionResult<ApiResponse<CatalogObjectDto>> GetObject(string code)
     {
         var obj = _catalog.GetObject(code);
@@ -32,7 +32,7 @@ public class ObjectCatalogController : BaseApiController
     }
 
     [HttpGet("objects/{code}/fields")]
-    [RequirePermission("Platform.Dashboards.View")]
+    [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
     public ActionResult<ApiResponse<List<CatalogFieldDto>>> GetFields(string code)
     {
         var obj = _catalog.GetObject(code);
