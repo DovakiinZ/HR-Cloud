@@ -500,9 +500,9 @@ git commit -m "feat(reports): enrich ReportDefinitionDto (folder, tags, favorite
 
 Today it has only `getReports` and `exportReport`. Every Phase 2 endpoint is unused.
 
-- [ ] **Step 1: Run `npm install`** (node_modules is absent).
+- [x] **Step 1: Run `npm install`** (node_modules is absent).
 
-- [ ] **Step 2: Extend the client**
+- [x] **Step 2: Extend the client**
 
 Add types mirroring the enriched DTOs (A5) and functions for: definition CRUD (`getReport`, `createReport`, `updateReport`, `deleteReport`, `publishReport`, `cloneReport`); field/filter/grouping/sorting add+delete; relationships (A2); `runReport(id, {page, pageSize, parameters})`; folders CRUD + `setReportFolder`; tags CRUD + assign/unassign; `toggleFavorite`, `togglePin`; `getShares`/`addShare`/`removeShare`; `validateFormula` (A3); and the catalog: `getCatalogObjects`, `getCatalogFields(code)` (`/api/platform/registry/...`) plus `getObjectDefinitions` (`/api/platform/objects`).
 
@@ -512,12 +512,12 @@ Follow the file's existing idioms: one-line arrow consts for simple calls, `asyn
 
 Extend `ExportFormat` if needed, but note the backend `?format=` parses `excel|csv|txt|xml|pdf`; the FE deliberately offers only `excel|csv|pdf`. Keep it that way — `txt`/`xml` writers register in **Payroll** DI, so their availability is coupled to that module.
 
-- [ ] **Step 3: Typecheck**
+- [x] **Step 3: Typecheck**
 
 Run: `npx tsc --noEmit`
 Expected: clean.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/lib/api/reports.ts
