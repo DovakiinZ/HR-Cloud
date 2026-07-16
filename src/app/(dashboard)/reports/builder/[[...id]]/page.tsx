@@ -347,7 +347,8 @@ function ComputedFieldForm({ reportId, sortOrder, onAdded }: { reportId: string;
     return () => clearTimeout(t);
   }, [formula]);
 
-  const slug = (s: string) => (s.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "calc") + "_" + Math.abs(Array.from(formula).reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 7)).toString(36).slice(0, 4);
+  // Unique per add: name slug + a time-based suffix, so two computed fields never collide on fieldCode.
+  const slug = (s: string) => (s.replace(/[^a-zA-Z0-9]+/g, "_").replace(/^_+|_+$/g, "") || "calc") + "_" + Date.now().toString(36).slice(-5);
 
   const add = async () => {
     setBusy(true);
@@ -378,7 +379,7 @@ function ComputedFieldForm({ reportId, sortOrder, onAdded }: { reportId: string;
         : <p className="text-xs text-destructive">{valid.error || "صيغة غير صحيحة"}</p>)}
       <input value={format} onChange={(e) => setFormat(e.target.value)} placeholder="نمط التنسيق (اختياري) مثل 0.00" className={CLS_INPUT} />
       <div className="flex items-center gap-2">
-        <button onClick={add} disabled={busy || !nameAr && !nameEn || !valid?.isValid} className={CLS_BTN_PRIMARY}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} أضف</button>
+        <button onClick={add} disabled={busy || (!nameAr && !nameEn) || !valid?.isValid} className={CLS_BTN_PRIMARY}>{busy ? <Loader2 className="h-4 w-4 animate-spin" /> : null} أضف</button>
         <button onClick={() => setOpen(false)} className="border border-border bg-secondary px-4 py-2 text-sm">إلغاء</button>
       </div>
     </div>
