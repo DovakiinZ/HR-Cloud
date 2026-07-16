@@ -189,7 +189,7 @@ public class ReportRelationship : BaseEntity {
 - **Alias assignment is `SortOrder`-dependent.** `aliasByObjectId` fills as the loop walks in `SortOrder` order, and `sourceAlias` falls back to `"t0"` via `GetValueOrDefault`. A relationship whose Source is another relationship's Target **must sort after it**, or it silently joins the primary table instead of erroring. **Validate: Source must be the primary object, or a Target already introduced at a strictly lower `SortOrder`.**
 - **`TargetObjectId` must be unique per report** — `aliasByObjectId[rel.TargetObjectId] = alias` overwrites, so joining the same object twice yields an unaddressable alias.
 
-- [x] **Step 1: Write the failing test** — *deviation: the cross-row rules were extracted to a pure  and covered by 13 DB-free tests that actually run, instead of a  that skips locally. The DB round-trip test was not written.*
+- [x] **Step 1: Write the failing test** — *deviation: the cross-row rules were extracted into a pure `ReportRelationshipRules` and covered by 13 DB-free tests that actually execute, instead of a `[SkippableFact]` that skips locally without `REPORTS_TEST_DB`. The DB round-trip test (owner adds a relationship → round-trips through the list query) was **not** written and is still outstanding.*
 
 `[SkippableFact]` mirroring the `ReportShareCommandTests` harness. Cover:
 - owner adds a valid relationship → round-trips through the list query;
