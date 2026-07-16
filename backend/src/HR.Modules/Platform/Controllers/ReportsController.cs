@@ -107,6 +107,11 @@ public class ReportsController : BaseApiController
     { await Mediator.Send(new DeleteReportSortingCommand(sortingId), ct); return OkResponse("Sorting removed"); }
 
     // Schedules
+    [HttpGet("{id:guid}/schedules")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportScheduleDto>>>> GetSchedules(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportSchedulesQuery(id), ct); return OkResponse(result); }
+
     [HttpPost("{id:guid}/schedules")]
     [RequirePermission("Platform.Reports.Edit")]
     public async Task<ActionResult<ApiResponse<ReportScheduleDto>>> AddSchedule(Guid id, [FromBody] AddReportScheduleCommand command, CancellationToken ct)
