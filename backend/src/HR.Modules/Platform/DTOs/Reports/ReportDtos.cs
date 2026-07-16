@@ -13,10 +13,17 @@ public class ReportDefinitionDto
     public Guid PrimaryObjectId { get; set; }
     public bool IsPublished { get; set; }
     public int Version { get; set; }
+    public Guid? FolderId { get; set; }
     public List<ReportFieldDto> Fields { get; set; } = new();
     public List<ReportFilterDto> Filters { get; set; } = new();
     public List<ReportGroupingDto> Groupings { get; set; } = new();
     public List<ReportSortingDto> Sortings { get; set; } = new();
+    public List<ReportRelationshipDto> Relationships { get; set; } = new();
+    public List<ReportTagDto> Tags { get; set; } = new();
+
+    /// <summary>Per-caller, not per-report: stitched in by ReportListProjector, never AutoMapper.</summary>
+    public bool IsFavorite { get; set; }
+    public bool IsPinned { get; set; }
 }
 
 public class ReportTemplateDto

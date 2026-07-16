@@ -4,6 +4,7 @@ using AutoMapper;
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Domain.Engines.Reports;
+using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.Commands.Reports;
 using HR.Modules.Platform.DTOs.Reports;
@@ -60,10 +61,23 @@ public class GetReportsQueryHandler : IRequestHandler<GetReportsQuery, Paginated
         var baseQuery = _context.Set<ReportDefinition>()
             .Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters)
             .Include(r => r.Groupings).Include(r => r.Sortings).Include(r => r.Shares)
+            .Include(r => r.Relationships.OrderBy(x => x.SortOrder))
             .AsQueryable();
         var query = await _access.FilterVisibleAsync(baseQuery, ct);
         if (!string.IsNullOrEmpty(request.Search))
             query = query.Where(r => r.NameEn.Contains(request.Search) || r.NameAr.Contains(request.Search));
+
+        // Scope was declared but never applied — filtering by it silently returned everything.
+        if (!string.IsNullOrWhiteSpace(request.Scope))
+        {
+            if (!Enum.TryParse<ReportScope>(request.Scope, ignoreCase: true, out var scope))
+                throw new HR.Application.Common.Exceptions.ValidationException(new[]
+                {
+                    new FluentValidation.Results.ValidationFailure("scope",
+                        $"Unknown scope '{request.Scope}'. Use Personal, Department, Company, or Shared."),
+                });
+            query = query.Where(r => r.Scope == scope);
+        }
 
         if (request.FolderId is { } fid)
             query = query.Where(r => r.FolderId == fid);
@@ -95,20 +109,50 @@ public class GetReportsQueryHandler : IRequestHandler<GetReportsQuery, Paginated
 
         var items = await ordered
             .Skip((request.PageNumber - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
-        return new PaginatedList<ReportDefinitionDto> { Items = _mapper.Map<List<ReportDefinitionDto>>(items), PageNumber = request.PageNumber, PageSize = request.PageSize, TotalCount = totalCount };
+
+        var dtos = _mapper.Map<List<ReportDefinitionDto>>(items);
+        await StitchUserStateAndTagsAsync(_context, _mapper, uid, dtos, ct);
+        return new PaginatedList<ReportDefinitionDto> { Items = dtos, PageNumber = request.PageNumber, PageSize = request.PageSize, TotalCount = totalCount };
+    }
+
+    /// <summary>Loads the caller's states and the tag links for the whole page in two batched
+    /// queries, then stitches. Per-report queries here would be an N+1 across the page.</summary>
+    internal static async Task StitchUserStateAndTagsAsync(
+        ApplicationDbContext context, IMapper mapper, Guid userId, List<ReportDefinitionDto> dtos, CancellationToken ct)
+    {
+        if (dtos.Count == 0) return;
+        var ids = dtos.Select(d => d.Id).ToList();
+
+        var states = await context.ReportUserStates
+            .Where(s => s.UserId == userId && ids.Contains(s.ReportDefinitionId))
+            .ToListAsync(ct);
+
+        var tagLinks = await (from link in context.ReportDefinitionTags
+                              join tag in context.ReportTags on link.ReportTagId equals tag.Id
+                              where ids.Contains(link.ReportDefinitionId)
+                              select new { link.ReportDefinitionId, Tag = tag })
+            .ToListAsync(ct);
+
+        var tagsByReportId = tagLinks
+            .GroupBy(x => x.ReportDefinitionId)
+            .ToDictionary(g => g.Key, g => mapper.Map<List<ReportTagDto>>(g.Select(x => x.Tag).ToList()));
+
+        ReportListProjector.Apply(dtos, states, tagsByReportId);
     }
 }
 
 public class GetReportByIdQueryHandler : IRequestHandler<GetReportByIdQuery, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
-    public GetReportByIdQueryHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access)
-    { _context = context; _mapper = mapper; _access = access; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access; private readonly ICurrentUserService _user;
+    public GetReportByIdQueryHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access, ICurrentUserService user)
+    { _context = context; _mapper = mapper; _access = access; _user = user; }
     public async Task<ReportDefinitionDto> Handle(GetReportByIdQuery request, CancellationToken ct)
     {
         await _access.EnsureCanReadAsync(request.Id, ct);
-        var entity = await _context.Set<ReportDefinition>().Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).FirstOrDefaultAsync(r => r.Id == request.Id, ct) ?? throw new HR.Application.Common.Exceptions.NotFoundException("ReportDefinition", request.Id);
-        return _mapper.Map<ReportDefinitionDto>(entity);
+        var entity = await _context.Set<ReportDefinition>().Include(r => r.Fields.OrderBy(f => f.SortOrder)).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).Include(r => r.Relationships.OrderBy(x => x.SortOrder)).FirstOrDefaultAsync(r => r.Id == request.Id, ct) ?? throw new HR.Application.Common.Exceptions.NotFoundException("ReportDefinition", request.Id);
+        var dto = _mapper.Map<ReportDefinitionDto>(entity);
+        await GetReportsQueryHandler.StitchUserStateAndTagsAsync(_context, _mapper, _user.UserId, new List<ReportDefinitionDto> { dto }, ct);
+        return dto;
     }
 }
 
