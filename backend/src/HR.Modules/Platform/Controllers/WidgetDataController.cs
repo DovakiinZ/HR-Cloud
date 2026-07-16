@@ -1,6 +1,7 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Finance.Export;
 using HR.Modules.Platform.Services.WidgetData;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -17,9 +18,10 @@ public class WidgetDataController : BaseApiController
 {
     private readonly IWidgetDataService _data;
     private readonly IWidgetSuggestionService _suggest;
-    public WidgetDataController(IWidgetDataService data, IWidgetSuggestionService suggest)
+    private readonly IWidgetExportService _export;
+    public WidgetDataController(IWidgetDataService data, IWidgetSuggestionService suggest, IWidgetExportService export)
     {
-        _data = data; _suggest = suggest;
+        _data = data; _suggest = suggest; _export = export;
     }
 
     /// <summary>AI builder — turn a natural-language phrase into a ready widget spec.</summary>
@@ -45,6 +47,17 @@ public class WidgetDataController : BaseApiController
     [RequirePermission("Platform.Dashboards.View")]
     public async Task<ActionResult<ApiResponse<WidgetDataResult>>> Drilldown([FromBody] DrilldownRequest req, CancellationToken ct)
         => OkResponse(await _data.GetRowsAsync(req.Spec, req.SegmentKey, req.DashboardFilters, req.Page ?? 1, req.PageSize ?? 25, ct));
+
+    /// <summary>Export a saved widget's data as a real Excel/PDF/CSV file.</summary>
+    [HttpGet("{widgetId:guid}/export")]
+    [RequirePermission("Platform.Dashboards.View")]
+    public async Task<IActionResult> Export(Guid widgetId, [FromQuery] string format = "excel", CancellationToken ct = default)
+    {
+        if (!Enum.TryParse<ExportFormat>(format, ignoreCase: true, out var fmt))
+            return BadRequest(ApiResponse.Fail($"Unknown export format '{format}'. Use excel, csv, or pdf."));
+        var file = await _export.ExportAsync(widgetId, fmt, ct);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
 }
 
 public sealed class AiSuggestRequest
