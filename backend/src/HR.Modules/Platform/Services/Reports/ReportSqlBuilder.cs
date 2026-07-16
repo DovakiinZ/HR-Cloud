@@ -31,12 +31,14 @@ public static class ReportSqlBuilder
             sb.Append(' ').Append(kw).Append(' ').Append(TableRef(j.Target)).Append(' ').Append(j.Alias)
               .Append(" ON ").Append(j.Alias).Append('.').Append(Q(j.TargetKeyColumn))
               .Append(" = ").Append(j.SourceAlias).Append('.').Append(Q(j.SourceColumn));
+            // The joined table's scope goes in ON, not WHERE: a predicate on an outer-joined table
+            // in WHERE rejects the null row and silently degrades the join to an inner one.
+            foreach (var pred in ScopePredicates(j.Target, j.Alias, tenantId, P))
+                sb.Append(" AND ").Append(pred);
         }
 
         // WHERE: tenant + soft-delete (primary) then filters
-        var where = new List<string>();
-        if (model.Primary.HasTenant) where.Add($"{model.PrimaryAlias}.{Q("TenantId")} = {P(tenantId)}");
-        if (model.Primary.HasSoftDelete) where.Add($"{model.PrimaryAlias}.{Q("IsDeleted")} = false");
+        var where = new List<string>(ScopePredicates(model.Primary, model.PrimaryAlias, tenantId, P));
         foreach (var f in model.Filters) AppendFilter(where, f, P);
         if (where.Count > 0) sb.Append(" WHERE ").Append(string.Join(" AND ", where));
 
@@ -47,6 +49,17 @@ public static class ReportSqlBuilder
 
         sb.Append(" LIMIT ").Append(rowCap + 1);
         return (sb.ToString(), ps);
+    }
+
+    /// <summary>Tenant + soft-delete predicates for one table. Every table in the query needs these,
+    /// not just the primary — an unscoped join reads other tenants' rows. Returns a list rather than
+    /// yielding, so the parameter-binding side effect of P cannot be skipped by lazy evaluation.</summary>
+    private static List<string> ScopePredicates(ResolvedObject o, string alias, Guid tenantId, Func<object?, string> P)
+    {
+        var preds = new List<string>(2);
+        if (o.HasTenant) preds.Add($"{alias}.{Q("TenantId")} = {P(tenantId)}");
+        if (o.HasSoftDelete) preds.Add($"{alias}.{Q("IsDeleted")} = false");
+        return preds;
     }
 
     private static void AppendFilter(List<string> where, ReportFilterModel f, Func<object?, string> P)

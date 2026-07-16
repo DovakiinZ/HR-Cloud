@@ -23,11 +23,29 @@ public class ReportSqlBuilderTests
         }
     };
 
+    private static ResolvedObject Department(bool tenantScoped) => new()
+    {
+        Code = "Department", TableName = "Departments", HasTenant = tenantScoped, HasSoftDelete = tenantScoped, KeyColumn = "Id",
+        Fields = new Dictionary<string, ResolvedField>(StringComparer.OrdinalIgnoreCase) { ["Name"] = Field("Name", "Name") }
+    };
+
     private static ReportQueryModel BaseModel() => new()
     {
         Primary = Employee(), PrimaryAlias = "t0",
         Columns = { new ReportColumnModel { TableAlias = "t0", Field = Employee().Fields["FullName"], OutputCode = "c0" } },
     };
+
+    private static ReportQueryModel ModelWithJoin(ResolvedObject target, string joinType)
+    {
+        var m = BaseModel();
+        m.Joins.Add(new ReportJoinModel
+        {
+            Alias = "t1", Target = target, SourceAlias = "t0",
+            SourceColumn = "DepartmentId", TargetKeyColumn = "Id", JoinType = joinType,
+        });
+        m.Columns.Add(new ReportColumnModel { TableAlias = "t1", Field = target.Fields["Name"], OutputCode = "c1" });
+        return m;
+    }
 
     [Fact]
     public void Selects_columns_with_tenant_and_softdelete_scope()
@@ -90,5 +108,44 @@ public class ReportSqlBuilderTests
             .Should().Throw<ValidationException>()
             .Which.Errors.Should().ContainSingle(e =>
                 e.PropertyName == "filter" && e.ErrorMessage.Contains("abc") && e.ErrorMessage.Contains("Salary"));
+    }
+
+    // --- Tenant isolation on joined tables ---------------------------------------------------
+    // Scope predicates for a joined table MUST be emitted, or a report joining any tenant-scoped
+    // object reads every tenant's rows. They must live in the ON clause: a joined table's predicate
+    // in WHERE degrades a LEFT JOIN to an INNER JOIN (the null row fails the predicate).
+
+    [Fact]
+    public void Inner_join_to_tenant_scoped_target_is_tenant_and_softdelete_filtered()
+    {
+        var tenant = Guid.NewGuid();
+        var (sql, ps) = ReportSqlBuilder.Build(ModelWithJoin(Department(tenantScoped: true), "Inner"), tenant, 100);
+
+        sql.Should().Contain("INNER JOIN \"Departments\" t1 ON t1.\"Id\" = t0.\"DepartmentId\"" +
+                             " AND t1.\"TenantId\" = @p0 AND t1.\"IsDeleted\" = false");
+        ps[0].Should().Be(tenant);
+    }
+
+    [Fact]
+    public void Left_join_scope_predicates_go_in_the_on_clause_and_preserve_the_outer_join()
+    {
+        var (sql, _) = ReportSqlBuilder.Build(ModelWithJoin(Department(tenantScoped: true), "Left"), Guid.NewGuid(), 100);
+
+        sql.Should().Contain("LEFT JOIN \"Departments\" t1 ON t1.\"Id\" = t0.\"DepartmentId\"" +
+                             " AND t1.\"TenantId\" = @p0 AND t1.\"IsDeleted\" = false");
+
+        // The joined table's predicates must not leak into WHERE, which would silently make this inner.
+        var where = sql[sql.IndexOf(" WHERE ", StringComparison.Ordinal)..];
+        where.Should().NotContain("t1.");
+    }
+
+    [Fact]
+    public void Join_to_a_non_tenant_scoped_target_gets_no_scope_predicate()
+    {
+        var (sql, _) = ReportSqlBuilder.Build(ModelWithJoin(Department(tenantScoped: false), "Inner"), Guid.NewGuid(), 100);
+
+        sql.Should().Contain("INNER JOIN \"Departments\" t1 ON t1.\"Id\" = t0.\"DepartmentId\"");
+        sql.Should().NotContain("t1.\"TenantId\"");
+        sql.Should().NotContain("t1.\"IsDeleted\"");
     }
 }
