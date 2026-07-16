@@ -17,6 +17,8 @@ public sealed class WidgetQuerySpec
     public int? Limit { get; set; }
     public string? RequiredPermission { get; set; }          // optional gate (e.g. "Payroll.View")
     public List<WidgetFilterSpec> Filters { get; set; } = new();
+    public string? Formula { get; set; }                    // used when Aggregation == "Formula"
+    public List<WidgetMeasureSpec> Measures { get; set; } = new();
 }
 
 public sealed class WidgetFilterSpec
@@ -24,6 +26,14 @@ public sealed class WidgetFilterSpec
     public string Field { get; set; } = null!;
     public string Operator { get; set; } = "eq";            // eq|ne|gt|gte|lt|lte|contains|startsWith|in|between|last_n_days|is_null|not_null
     public string? Value { get; set; }
+}
+
+public sealed class WidgetMeasureSpec
+{
+    public string Name { get; set; } = null!;               // variable referenced by Formula (e.g. "m1")
+    public string Aggregation { get; set; } = "Count";      // Count|Sum|Average|Min|Max|DistinctCount
+    public string? AggregationField { get; set; }
+    public List<WidgetFilterSpec> Filters { get; set; } = new();
 }
 
 public sealed class WidgetDataResult
