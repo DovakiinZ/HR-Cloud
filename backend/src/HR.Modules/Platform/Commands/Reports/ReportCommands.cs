@@ -4,6 +4,7 @@ using HR.Domain.Engines.Reports;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.DTOs.Reports;
+using HR.Modules.Platform.Services.Reports;
 using MediatR;
 using Microsoft.EntityFrameworkCore;
 
@@ -53,6 +54,10 @@ public record AddReportFieldCommand : IRequest<ReportFieldDto>
     public string DisplayNameAr { get; init; } = null!;
     public AggregationType? Aggregation { get; init; }
     public string? CalculationExpression { get; init; }
+
+    /// <summary>Formula as authored (e.g. "ROUND(basicSalary * 0.09, 2)"). Compiled to
+    /// CalculationExpression on write; wins over a directly-supplied AST.</summary>
+    public string? CalculationText { get; init; }
     public string? FormatPattern { get; init; }
     public int Width { get; init; }
     public int SortOrder { get; init; }
@@ -177,7 +182,7 @@ public class CloneReportCommandHandler : IRequestHandler<CloneReportCommand, Rep
         var clone = new ReportDefinition { Code = request.NewCode, NameEn = request.NameEn, NameAr = request.NameAr, Description = source.Description, ReportType = source.ReportType, Scope = ReportScope.Personal, PrimaryObjectId = source.PrimaryObjectId };
         _context.Set<ReportDefinition>().Add(clone);
         await _context.SaveChangesAsync(ct);
-        foreach (var f in source.Fields) _context.Set<ReportField>().Add(new ReportField { ReportDefinitionId = clone.Id, FieldType = f.FieldType, ObjectDefinitionId = f.ObjectDefinitionId, FieldCode = f.FieldCode, DisplayNameEn = f.DisplayNameEn, DisplayNameAr = f.DisplayNameAr, Aggregation = f.Aggregation, CalculationExpression = f.CalculationExpression, FormatPattern = f.FormatPattern, Width = f.Width, SortOrder = f.SortOrder, IsVisible = f.IsVisible });
+        foreach (var f in source.Fields) _context.Set<ReportField>().Add(new ReportField { ReportDefinitionId = clone.Id, FieldType = f.FieldType, ObjectDefinitionId = f.ObjectDefinitionId, FieldCode = f.FieldCode, DisplayNameEn = f.DisplayNameEn, DisplayNameAr = f.DisplayNameAr, Aggregation = f.Aggregation, CalculationExpression = f.CalculationExpression, CalculationText = f.CalculationText, FormatPattern = f.FormatPattern, Width = f.Width, SortOrder = f.SortOrder, IsVisible = f.IsVisible });
         foreach (var f in source.Filters) _context.Set<ReportFilter>().Add(new ReportFilter { ReportDefinitionId = clone.Id, FieldCode = f.FieldCode, Operator = f.Operator, Value = f.Value, ValueTo = f.ValueTo, LogicalOperator = f.LogicalOperator, IsParameter = f.IsParameter, SortOrder = f.SortOrder });
         foreach (var g in source.Groupings) _context.Set<ReportGrouping>().Add(new ReportGrouping { ReportDefinitionId = clone.Id, FieldCode = g.FieldCode, SortOrder = g.SortOrder });
         foreach (var s in source.Sortings) _context.Set<ReportSorting>().Add(new ReportSorting { ReportDefinitionId = clone.Id, FieldCode = s.FieldCode, Direction = s.Direction, SortOrder = s.SortOrder });
@@ -195,7 +200,8 @@ public class AddReportFieldCommandHandler : IRequestHandler<AddReportFieldComman
     public AddReportFieldCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
     public async Task<ReportFieldDto> Handle(AddReportFieldCommand request, CancellationToken ct)
     {
-        var entity = new ReportField { ReportDefinitionId = request.ReportDefinitionId, FieldType = request.FieldType, ObjectDefinitionId = request.ObjectDefinitionId, FieldCode = request.FieldCode, DisplayNameEn = request.DisplayNameEn, DisplayNameAr = request.DisplayNameAr, Aggregation = request.Aggregation, CalculationExpression = request.CalculationExpression, FormatPattern = request.FormatPattern, Width = request.Width, SortOrder = request.SortOrder };
+        var calculationExpression = ReportFormulaCompiler.Compile(request.CalculationText, request.CalculationExpression);
+        var entity = new ReportField { ReportDefinitionId = request.ReportDefinitionId, FieldType = request.FieldType, ObjectDefinitionId = request.ObjectDefinitionId, FieldCode = request.FieldCode, DisplayNameEn = request.DisplayNameEn, DisplayNameAr = request.DisplayNameAr, Aggregation = request.Aggregation, CalculationExpression = calculationExpression, CalculationText = request.CalculationText, FormatPattern = request.FormatPattern, Width = request.Width, SortOrder = request.SortOrder };
         _context.Set<ReportField>().Add(entity);
         await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportFieldDto>(entity);

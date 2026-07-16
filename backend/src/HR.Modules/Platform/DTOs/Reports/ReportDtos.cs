@@ -42,6 +42,7 @@ public class ReportFieldDto
     public string DisplayNameAr { get; set; } = null!;
     public string? Aggregation { get; set; }
     public string? CalculationExpression { get; set; }
+    public string? CalculationText { get; set; }
     public string? FormatPattern { get; set; }
     public int Width { get; set; }
     public int SortOrder { get; set; }
@@ -106,4 +107,15 @@ public class ReportRelationshipDto
     public string JoinField { get; set; } = null!;
     public string JoinType { get; set; } = null!;
     public int SortOrder { get; set; }
+}
+
+public class ValidateFormulaRequest
+{
+    public string? Formula { get; set; }
+}
+
+public class FormulaValidationDto
+{
+    public bool IsValid { get; set; }
+    public string? Error { get; set; }
 }

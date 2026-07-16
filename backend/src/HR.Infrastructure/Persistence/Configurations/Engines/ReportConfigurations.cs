@@ -49,6 +49,7 @@ public class ReportFieldConfiguration : IEntityTypeConfiguration<ReportField>
         builder.Property(x => x.DisplayNameEn).HasMaxLength(200).IsRequired();
         builder.Property(x => x.DisplayNameAr).HasMaxLength(200).IsRequired();
         builder.Property(x => x.CalculationExpression).HasMaxLength(1000);
+        builder.Property(x => x.CalculationText).HasMaxLength(1000);
         builder.Property(x => x.FormatPattern).HasMaxLength(100);
     }
 }
