@@ -14,7 +14,7 @@ namespace HR.Modules.Platform.Controllers;
 public class ObjectRegistryController : BaseApiController
 {
     [HttpGet]
-    [RequirePermission("Platform.Objects.View")]
+    [RequirePermission("Platform.Objects.View", "Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<List<ObjectDefinitionDto>>>> GetAll(CancellationToken ct)
     {
         var result = await Mediator.Send(new GetObjectDefinitionsQuery(), ct);
@@ -22,7 +22,7 @@ public class ObjectRegistryController : BaseApiController
     }
 
     [HttpGet("{code}")]
-    [RequirePermission("Platform.Objects.View")]
+    [RequirePermission("Platform.Objects.View", "Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<ObjectDefinitionDto>>> GetByCode(string code, CancellationToken ct)
     {
         var result = await Mediator.Send(new GetObjectDefinitionByCodeQuery(code), ct);
