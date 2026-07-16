@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Download, GripVertical, Image as ImageIcon, Loader2, Pencil, RefreshCw, Trash2, AlertCircle, FileSpreadsheet } from "lucide-react";
-import { executeWidget, previewWidgetData } from "@/lib/api/dashboards";
+import { executeWidget, exportWidget, previewWidgetData } from "@/lib/api/dashboards";
 import { SeriesPoint, WidgetDataResult, WidgetFilterSpec, WidgetQuerySpec } from "@/types/dashboard";
 import { exportCsv, exportPng } from "@/lib/dashboard-export";
 import { ApiError } from "@/lib/api-client";
@@ -103,6 +103,16 @@ export function WidgetCard({
                       <button onClick={() => { setMenu(false); if (bodyRef.current) exportPng(titleAr, bodyRef.current); }} className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-muted">
                         <ImageIcon className="h-3.5 w-3.5" /> PNG
                       </button>
+                      {widgetId && (
+                        <>
+                          <button onClick={() => { setMenu(false); exportWidget(widgetId, "excel", titleAr); }} className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-muted">
+                            <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                          </button>
+                          <button onClick={() => { setMenu(false); exportWidget(widgetId, "pdf", titleAr); }} className="flex w-full items-center gap-2 px-3 py-1.5 hover:bg-muted">
+                            <Download className="h-3.5 w-3.5" /> PDF
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}

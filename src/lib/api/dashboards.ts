@@ -1,5 +1,7 @@
 // Data layer for the Dashboard Platform. Talks to the live Platform API.
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
+import { toast } from "sonner";
 import {
   CatalogObject,
   CatalogField,
@@ -155,3 +157,31 @@ export const drilldownWidget = (
     method: "POST",
     body: { spec, segmentKey, dashboardFilters, page, pageSize },
   });
+
+// ── Widget export (server-side Excel / PDF / CSV) ──
+export type WidgetExportFormat = "excel" | "pdf" | "csv";
+const WIDGET_EXT: Record<WidgetExportFormat, string> = { excel: "xlsx", pdf: "pdf", csv: "csv" };
+
+/** Download a widget's data as a real file (server-side Excel/PDF/CSV). Streams raw bytes. */
+export async function exportWidget(widgetId: string, format: WidgetExportFormat, fallbackName = "widget"): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/platform/dashboards/widget-data/${widgetId}/export?format=${format}`, {
+    method: "GET",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
+  if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير هذه الودجة"); throw new Error("Forbidden"); }
+  if (!res.ok) { toast.error("تعذر تصدير الودجة"); throw new Error(`Export failed (${res.status})`); }
+
+  let filename = `${fallbackName}-${new Date().toISOString().slice(0, 10)}.${WIDGET_EXT[format]}`;
+  const cd = res.headers.get("Content-Disposition");
+  const match = cd?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1].replace(/"/g, ""));
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
