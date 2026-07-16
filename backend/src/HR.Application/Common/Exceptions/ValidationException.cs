@@ -17,11 +17,4 @@ public class ValidationException : Exception
             .GroupBy(e => e.PropertyName, e => e.ErrorMessage)
             .ToDictionary(g => g.Key, g => g.ToArray());
     }
-
-    /// <summary>Returns a message that includes the field names and their error messages so callers
-    /// (and tests) can inspect which fields were invalid without reading <see cref="Errors"/>.</summary>
-    public override string Message =>
-        Errors.Count == 0
-            ? base.Message
-            : $"{base.Message} {string.Join("; ", Errors.Select(kv => $"{kv.Key}: {string.Join(", ", kv.Value)}"))}";
 }

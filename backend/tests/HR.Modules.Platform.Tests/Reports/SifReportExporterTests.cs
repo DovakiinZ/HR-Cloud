@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using FluentAssertions;
 using HR.Application.Common.Exceptions;
@@ -50,6 +51,7 @@ public class SifReportExporterTests
         var result = ValidResult();
         result.Columns.RemoveAll(c => c.Code == "Iban");
         var act = () => SifReportExporter.Export(result);
-        act.Should().Throw<ValidationException>().Which.Message.Should().Contain("Iban");
+        var ex = act.Should().Throw<ValidationException>().Which;
+        ex.Errors.Values.SelectMany(v => v).Should().Contain(m => m.Contains("Iban"));
     }
 }
