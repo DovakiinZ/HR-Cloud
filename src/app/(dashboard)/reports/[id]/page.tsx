@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { usePermission } from "@/lib/permissions";
 import { getReport, runReport, exportReport, ReportDetail, ReportResult, ExportFormat } from "@/lib/api/reports";
 import { ReportTable } from "@/components/reports/report-table";
+import { SchedulePanel } from "@/components/reports/schedule-panel";
 
 const FORMATS: { key: ExportFormat; label: string }[] = [
   { key: "excel", label: "Excel" }, { key: "csv", label: "CSV" }, { key: "pdf", label: "PDF" },
@@ -92,6 +93,8 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
           )}
         </>
       ) : null}
+
+      {canEdit && <SchedulePanel reportId={id} />}
     </div>
   );
 }
