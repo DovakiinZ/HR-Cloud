@@ -308,19 +308,19 @@ And the payroll `Rule` entity stores **both** `ExpressionText` and `ExpressionAs
 - Available functions: `IF`, `AND`, `OR`, `NOT`, `MIN`, `MAX`, `ROUND`, `ABS`, `FLOOR`, `CEIL`, `CLAMP`, `COALESCE`, `PERCENT` (built-ins) + `today()`, `now()`, `age(dateText)`, `yearsBetween(from,to)`, `concat(a,b,…)`, `round(value,digits)` (report-specific, `ComputedFieldEvaluator.ReportFunctions()`).
 - Variables resolve **case-insensitively against the row's field codes**.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 DB-free where possible. Assert:
 - a valid formula (`ROUND(basicSalary * 0.09, 2)`) parses and the handler stores AST JSON in `CalculationExpression` that `AstJson.Deserialize` round-trips;
 - an invalid formula (`basicSalary +`) raises `ValidationException` (**not** a raw `ExpressionException` — see Step 3);
 - supplying `CalculationExpression` (AST JSON) directly still works.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests --filter FullyQualifiedName~ReportFieldFormulaTests`
 Expected: FAIL — `CalculationText` does not exist (compile error).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `ReportField.cs`:
 ```csharp
@@ -343,7 +343,7 @@ if (!string.IsNullOrWhiteSpace(request.CalculationText))
 
 Add `CalculationText` to `AddReportFieldCommand` and to `ReportFieldDto`.
 
-- [ ] **Step 4: Add a formula-validation endpoint**
+- [x] **Step 4: Add a formula-validation endpoint**
 
 The builder needs live validation without saving:
 ```csharp
@@ -357,7 +357,7 @@ public ActionResult<ApiResponse<FormulaValidationDto>> ValidateFormula([FromBody
 ```
 Declare `ValidateFormulaRequest { string? Formula }` and `FormulaValidationDto { bool IsValid; string? Error }` in `ReportDtos.cs`. This is a pure function of the input — no DB, no MediatR needed.
 
-- [ ] **Step 5: Generate the migration**
+- [x] **Step 5: Generate the migration**
 
 ```bash
 dotnet ef migrations add ReportFieldCalculationText --project backend/src/HR.Infrastructure --startup-project backend/src/HR.Api --context ApplicationDbContext
@@ -366,12 +366,12 @@ Inspect `Up()`: it must add exactly one column to `engine_report_fields` and not
 
 > Note: `20260714193059_ReportOrganization` may not yet be applied to Azure Postgres (Phase 2 deferred it to deploy). That is a **deployment** concern, not a blocker here — but confirm before deploying, since this migration stacks on it.
 
-- [ ] **Step 6: Run tests + build**
+- [x] **Step 6: Run tests + build**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests`
 Expected: BUILD succeeds; tests PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add -A
@@ -395,16 +395,16 @@ git commit -m "feat(reports): formula authoring path (text -> AST via Expression
 
 **Also fix while here:** filters only resolve against the **primary object** (`primary.Field(flt.FieldCode)`) — a filter on a joined object's field is **silently dropped, not an error**. With joins now creatable (A2), silent drops become much more likely. At minimum, **throw a `ValidationException` instead of dropping**, so a user gets told rather than handed wrong numbers. (Full joined-field filtering is out of scope for R1; raising the silent drop to an error is not.)
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** — *deviation: the substitution rules were extracted into a pure `ReportParameterBinder` and covered by 8 DB-free tests in `ReportParameterBinderTests.cs` (not `ReportParameterTests.cs`), which actually execute. The **joined-field `ValidationException` is implemented but untested** — it lives in `ReportObjectResolver`, which needs a DB, so it would have been a `[SkippableFact]` that skips locally without `REPORTS_TEST_DB`. Outstanding, alongside A2's un-written DB round-trip test.*
 
 Assert: a parameterized filter with a supplied value uses the supplied value; with none, falls back to the stored default; a non-parameter filter ignores a supplied value; a filter on a joined field now raises `ValidationException` rather than vanishing.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests --filter FullyQualifiedName~ReportParameterTests`
 Expected: FAIL — no parameter plumbing (compile error).
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Thread `IReadOnlyDictionary<string, string?>? parameters` through `RunReportQuery` → `IReportExecutionService.RunAsync` → `IReportObjectResolver.BuildModelAsync`. In the resolver's filter loop, when `flt.IsParameter` and the dictionary has a matching key, substitute the value.
 
@@ -412,7 +412,7 @@ Thread `IReadOnlyDictionary<string, string?>? parameters` through `RunReportQuer
 
 Keep the signature change additive (optional/defaulted) so existing callers compile.
 
-- [ ] **Step 4: Update the controller**
+- [x] **Step 4: Update the controller**
 
 ```csharp
 [HttpPost("{id:guid}/run")]
@@ -424,12 +424,14 @@ Body must stay **optional** — the existing FE and the export path call `run` w
 
 Add `format`-parity to `/export` (`?format=...&p.<fieldCode>=<value>` or a POST body) **only if trivial**; otherwise note that exporting a parameterized report uses stored defaults and surface that in the viewer UI (B3).
 
-- [ ] **Step 5: Run tests + build**
+> **Done — parity shipped.** `/export` reads `p.<fieldCode>=<value>` from the query string (GET, so no body) and threads it through `RunForExportAsync`. **B3 step 2 does not need the "export uses stored defaults" caveat** — the viewer must instead pass its current parameter values on the export URL. A `Between` filter's upper bound is keyed `p.<fieldCode>:to`.
+
+- [x] **Step 5: Run tests + build**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
