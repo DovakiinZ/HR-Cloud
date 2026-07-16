@@ -365,6 +365,8 @@ dotnet ef migrations add ReportFieldCalculationText --project backend/src/HR.Inf
 Inspect `Up()`: it must add exactly one column to `engine_report_fields` and nothing else. If unrelated changes appear, prior model drift exists — stop and report.
 
 > Note: `20260714193059_ReportOrganization` may not yet be applied to Azure Postgres (Phase 2 deferred it to deploy). That is a **deployment** concern, not a blocker here — but confirm before deploying, since this migration stacks on it.
+>
+> **Resolved 2026-07-16:** Phase 2's `ReportOrganization` **was already applied** — the assumption above was wrong. `ReportFieldCalculationText` has now been applied on top of it; `dotnet ef migrations list` against Azure reports **nothing pending**. The emitted DDL was exactly the one expected column (`ALTER TABLE engine_report_fields ADD "CalculationText" character varying(1000)`), no model drift. *Deviation: the column is `varying(1000)`, not the `HasMaxLength(2000)` this plan specified.*
 
 - [x] **Step 6: Run tests + build**
 
@@ -487,7 +489,9 @@ git add -A
 git commit -m "feat(reports): enrich ReportDefinitionDto (folder, tags, favorite/pin, relationships) + wire Scope filter"
 ```
 
-**► PART A CHECKPOINT:** Backend is complete and independently deployable. Run `dotnet test backend/tests/HR.Modules.Platform.Tests`. Two migrations are now pending against Azure (`ReportOrganization` from Phase 2 + `ReportFieldCalculationText` from A3) — apply both at deploy.
+**► PART A CHECKPOINT:** Backend is complete and independently deployable. Run `dotnet test backend/tests/HR.Modules.Platform.Tests`. ~~Two migrations are now pending against Azure (`ReportOrganization` from Phase 2 + `ReportFieldCalculationText` from A3) — apply both at deploy.~~ **Done 2026-07-16: both are applied to Azure Postgres; nothing pending.** Part A is complete and pushed (`main` @ `b5f59dc`).
+
+> **Local test runner note:** this machine has only the .NET 10 runtime while the projects target `net8.0`, so a bare `dotnet test` aborts with "You must install or update .NET". Prefix with `DOTNET_ROLL_FORWARD=Major`. The 7 `[SkippableFact]` tests still skip without `REPORTS_TEST_DB`.
 
 ---
 
@@ -647,7 +651,9 @@ git commit -m "feat(reports): report builder wizard (object -> joins -> fields -
 
 ## Deployment notes
 
-- **Two migrations pending against Azure Postgres:** `20260714193059_ReportOrganization` (Phase 2, deferred at the time) and `ReportFieldCalculationText` (A3). Confirm the Phase 2 one is actually applied before stacking A3 on it. Password: Key Vault `secretpulse/hrcloud-db-password`.
+- ~~**Two migrations pending against Azure Postgres:**~~ **Applied 2026-07-16 — nothing pending.** Phase 2's `20260714193059_ReportOrganization` turned out to be already applied (contrary to this plan's assumption), and `20260716150509_ReportFieldCalculationText` (A3) was applied on top of it. Verified with `dotnet ef migrations list` against Azure. Password: Key Vault `secretpulse/hrcloud-db-password` (the local `~/.hrcloud-db-pass.txt` this plan referenced **no longer exists** — pull from Key Vault).
+- **Applying migrations from a dev machine needs a firewall rule.** The server rejects unlisted IPs by timeout, not by a clear error. Add `az postgres flexible-server firewall-rule create --resource-group HR --server-name hrcloud-pg-v4xd --name <rule> --start-ip-address <ip> --end-ip-address <ip>`, then **delete it when done**. Note this CLI takes `--name` for the *rule* and `--server-name` for the server, while `firewall-rule list` wants `--server-name` — the inconsistency costs a few minutes if unnoticed.
+- **Firewall hygiene:** the server carries ~9 stale single-IP dev rules (`claude-dev-*`, `devmachine-0613`, `devbox-*`, …) from past sessions, plus `AllowAzureServices`. Worth a cleanup pass; each is a standing hole to a long-gone dev IP.
 - API: `hrcloud-api-v4xd` (West Europe). Zip-deploy gotcha: build the zip via `System.IO.Compression.ZipFile` with `.Replace('\\','/')` on entry names — PowerShell `Compress-Archive` writes `\` paths that Linux Kudu rsync rejects.
 
 ## Out of scope (deferred past R1)
