@@ -103,25 +103,25 @@ Also: **there is no `Select` primitive.** Use a raw `<select>` with the codebase
 
 > **LEFT JOIN semantics:** putting a joined table's predicate in `WHERE` degrades a LEFT JOIN to an INNER JOIN (the null row fails the predicate). For `left`/`right` joins the predicate **must go in the `ON` clause**, not `WHERE`. For inner joins either works; prefer `ON` uniformly so the emitted SQL is consistent and the LEFT-JOIN trap can never reappear.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Assert the built SQL contains a tenant predicate for a joined tenant-scoped target, and that it sits in the `ON` clause. Follow the existing `ReportSqlBuilderTests` construction of `ReportQueryModel` + `ReportJoinModel`. Cover: (a) inner join to a tenant-scoped object → predicate present; (b) left join → predicate in `ON`, and the SQL still reads `LEFT JOIN`; (c) join to a non-tenant object → no predicate.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests --filter FullyQualifiedName~ReportSqlBuilderTests`
 Expected: FAIL — no tenant predicate emitted for joins.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 In the join loop (`ReportSqlBuilder.cs:28-34`), after the existing `ON {alias}.{key} = {sourceAlias}.{col}` condition, append the target's scope predicates to the same `ON` clause. Reuse whatever helper emits the primary table's tenant/soft-delete predicate so the two paths cannot drift; if it is inlined, extract it to a `private static void AppendScopePredicates(StringBuilder sb, ResolvedObject obj, string alias)` and call it from both.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests --filter FullyQualifiedName~ReportSqlBuilderTests`
 Expected: PASS, and all pre-existing SQL-builder tests still green (the primary-table SQL must be byte-identical).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add backend/src/HR.Modules/Platform/Services/Reports/ReportSqlBuilder.cs backend/tests/HR.Modules.Platform.Tests/Reports/ReportSqlBuilderTests.cs
@@ -137,7 +137,7 @@ git commit -m "fix(reports): tenant/soft-delete filter joined tables (prerequisi
 
 `RequirePermissionAttribute` already takes `params string[]` with **OR semantics** (`_permissions.Any(p => currentUser.Permissions.Contains(p))`). Precedent: `EmployeesController.cs:73` → `[RequirePermission("Employees.Terminate", "Employees.ViewSettlement")]`. No attribute change, no seeding, no migration — `Platform.Reports.View` is already seeded (`SeedData.cs:43`) and backfilled to system roles.
 
-- [ ] **Step 1: Change the three attributes**
+- [x] **Step 1: Change the three attributes**
 
 On `GetObjects`, `GetObject`, and `GetFields`:
 
@@ -145,12 +145,12 @@ On `GetObjects`, `GetObject`, and `GetFields`:
 [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
 ```
 
-- [ ] **Step 2: Build**
+- [x] **Step 2: Build**
 
 Run: `dotnet build backend/src/HR.Api/HR.Api.csproj`
 Expected: BUILD succeeds.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add backend/src/HR.Modules/Platform/Controllers/ObjectCatalogController.cs
