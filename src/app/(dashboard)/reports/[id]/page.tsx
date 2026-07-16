@@ -11,6 +11,7 @@ import { SchedulePanel } from "@/components/reports/schedule-panel";
 
 const FORMATS: { key: ExportFormat; label: string }[] = [
   { key: "excel", label: "Excel" }, { key: "csv", label: "CSV" }, { key: "pdf", label: "PDF" },
+  { key: "sif", label: "WPS/SIF" },
 ];
 
 export default function ReportViewerPage({ params }: { params: Promise<{ id: string }> }) {

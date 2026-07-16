@@ -11,6 +11,7 @@ const FORMATS: { key: ExportFormat; label: string; icon: typeof FileText }[] = [
   { key: "excel", label: "Excel", icon: FileSpreadsheet },
   { key: "csv", label: "CSV", icon: FileText },
   { key: "pdf", label: "PDF", icon: FileType },
+  { key: "sif", label: "WPS/SIF", icon: FileText },
 ];
 
 export default function ReportsPage() {

@@ -23,7 +23,7 @@ export interface PaginatedReports {
   totalPages: number;
 }
 
-export type ExportFormat = "excel" | "csv" | "pdf";
+export type ExportFormat = "excel" | "csv" | "pdf" | "sif";
 
 /** Fetch the visible (access-filtered) report definitions. */
 export async function getReports(params: { page?: number; pageSize?: number } = {}): Promise<PaginatedReports> {
@@ -34,7 +34,7 @@ export async function getReports(params: { page?: number; pageSize?: number } = 
   return apiFetch<PaginatedReports>(`/api/platform/reports${qs ? `?${qs}` : ""}`);
 }
 
-const EXT: Record<ExportFormat, string> = { excel: "xlsx", csv: "csv", pdf: "pdf" };
+const EXT: Record<ExportFormat, string> = { excel: "xlsx", csv: "csv", pdf: "pdf", sif: "csv" };
 
 /**
  * Download a report export as a file. The export endpoint streams raw bytes (not the JSON
@@ -50,6 +50,15 @@ export async function exportReport(reportId: string, format: ExportFormat, fallb
 
   if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
   if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير التقارير"); throw new Error("Forbidden"); }
+  if (res.status === 400) {
+    let msg = "طلب التصدير غير صالح";
+    try {
+      const body = await res.clone().json();
+      const raw = body?.errors?.columns?.[0] ?? body?.message ?? body?.title ?? null;
+      if (raw) msg = raw;
+    } catch { /* ignore parse errors, use generic message */ }
+    toast.error(msg); throw new Error(`Export bad request (${msg})`);
+  }
   if (!res.ok) { toast.error("تعذر تصدير التقرير"); throw new Error(`Export failed (${res.status})`); }
 
   // Prefer the server's filename from Content-Disposition when present.
