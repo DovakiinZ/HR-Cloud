@@ -31,7 +31,7 @@ const MEASURE_AGGS: { value: AggregationName; label: string; needsField: boolean
   { value: "Average", label: "المتوسط", needsField: true },
   { value: "Min", label: "الأدنى", needsField: true },
   { value: "Max", label: "الأعلى", needsField: true },
-  { value: "DistinctCount", label: "عدد القيم المميزة", needsField: false },
+  { value: "DistinctCount", label: "عدد القيم المميزة", needsField: true },
 ];
 
 const DEFAULT_MEASURES: WidgetMeasure[] = [{ name: "m1", aggregation: "Count", aggregationField: null }];
@@ -109,6 +109,9 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
       }
     }, 400);
   }, []);
+
+  // Clear any in-flight formula-validation timer on unmount.
+  useEffect(() => () => { if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current); }, []);
 
   const spec: WidgetQuerySpec = useMemo(() => {
     if (aggregation === "Formula") {
