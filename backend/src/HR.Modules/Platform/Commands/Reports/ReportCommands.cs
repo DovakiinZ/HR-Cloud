@@ -173,7 +173,7 @@ public class CloneReportCommandHandler : IRequestHandler<CloneReportCommand, Rep
     public CloneReportCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
     public async Task<ReportDefinitionDto> Handle(CloneReportCommand request, CancellationToken ct)
     {
-        var source = await _context.Set<ReportDefinition>().Include(r => r.Fields).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).FirstOrDefaultAsync(r => r.Id == request.SourceReportId, ct) ?? throw new NotFoundException("ReportDefinition", request.SourceReportId);
+        var source = await _context.Set<ReportDefinition>().Include(r => r.Fields).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).Include(r => r.Relationships).FirstOrDefaultAsync(r => r.Id == request.SourceReportId, ct) ?? throw new NotFoundException("ReportDefinition", request.SourceReportId);
         var clone = new ReportDefinition { Code = request.NewCode, NameEn = request.NameEn, NameAr = request.NameAr, Description = source.Description, ReportType = source.ReportType, Scope = ReportScope.Personal, PrimaryObjectId = source.PrimaryObjectId };
         _context.Set<ReportDefinition>().Add(clone);
         await _context.SaveChangesAsync(ct);
@@ -181,6 +181,9 @@ public class CloneReportCommandHandler : IRequestHandler<CloneReportCommand, Rep
         foreach (var f in source.Filters) _context.Set<ReportFilter>().Add(new ReportFilter { ReportDefinitionId = clone.Id, FieldCode = f.FieldCode, Operator = f.Operator, Value = f.Value, ValueTo = f.ValueTo, LogicalOperator = f.LogicalOperator, IsParameter = f.IsParameter, SortOrder = f.SortOrder });
         foreach (var g in source.Groupings) _context.Set<ReportGrouping>().Add(new ReportGrouping { ReportDefinitionId = clone.Id, FieldCode = g.FieldCode, SortOrder = g.SortOrder });
         foreach (var s in source.Sortings) _context.Set<ReportSorting>().Add(new ReportSorting { ReportDefinitionId = clone.Id, FieldCode = s.FieldCode, Direction = s.Direction, SortOrder = s.SortOrder });
+        // Relationships must clone too: without them a multi-object report's fields reference
+        // objects that are no longer joined, which fails at run time rather than at clone time.
+        foreach (var rel in source.Relationships) _context.Set<ReportRelationship>().Add(new ReportRelationship { ReportDefinitionId = clone.Id, SourceObjectId = rel.SourceObjectId, TargetObjectId = rel.TargetObjectId, JoinField = rel.JoinField, JoinType = rel.JoinType, SortOrder = rel.SortOrder });
         await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportDefinitionDto>(clone);
     }

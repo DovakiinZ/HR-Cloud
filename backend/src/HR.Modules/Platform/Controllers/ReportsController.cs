@@ -106,6 +106,22 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteSorting(Guid sortingId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportSortingCommand(sortingId), ct); return OkResponse("Sorting removed"); }
 
+    // Relationships (joins)
+    [HttpGet("{id:guid}/relationships")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportRelationshipDto>>>> GetRelationships(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportRelationshipsQuery(id), ct); return OkResponse(result); }
+
+    [HttpPost("{id:guid}/relationships")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse<ReportRelationshipDto>>> AddRelationship(Guid id, [FromBody] AddReportRelationshipCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command with { ReportDefinitionId = id }, ct); return CreatedResponse(result); }
+
+    [HttpDelete("relationships/{relationshipId:guid}")]
+    [RequirePermission("Platform.Reports.Edit")]
+    public async Task<ActionResult<ApiResponse>> DeleteRelationship(Guid relationshipId, CancellationToken ct)
+    { await Mediator.Send(new DeleteReportRelationshipCommand(relationshipId), ct); return OkResponse("Relationship removed"); }
+
     // Schedules
     [HttpPost("{id:guid}/schedules")]
     [RequirePermission("Platform.Reports.Edit")]
