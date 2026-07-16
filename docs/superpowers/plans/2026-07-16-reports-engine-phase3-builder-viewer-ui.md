@@ -450,15 +450,15 @@ git commit -m "feat(reports): runtime parameters on run + error (not silent drop
 
 The list page (B2) needs folder + tag + favorite/pin state per report; the builder (B4) needs relationships. Today `ReportDefinitionDto` exposes none of them.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** — *deviation, two parts. (a) The stitching was extracted into a pure `ReportListProjector` and covered by 4 DB-free tests that actually execute, rather than a `[SkippableFact]` that skips locally without `REPORTS_TEST_DB`. (b) **These were not red first** — the projector was written before its tests, so they passed on the first run; the behavior is real but the red step was skipped. The **per-caller `isFavorite` assertion (a second user sees false) is still outstanding**: the projector trusts the caller-filtered states it is handed, so the `UserId` filter lives in the handler query and only a DB test can prove it.*
 
 `[SkippableFact]`: a report in a folder with a tag, favorited by the caller, projects `folderId`, `tags`, `isFavorite`, `isPinned` correctly. Assert `isFavorite` is **per-caller** (a second user sees false).
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Expected: FAIL — properties do not exist.
 
-- [ ] **Step 3: Implement**
+- [x] **Step 3: Implement**
 
 Add to `ReportDefinitionDto`:
 ```csharp
@@ -472,15 +472,15 @@ Add to `ReportDefinitionDto`:
 
 Watch the N+1: load the caller's `ReportUserState` rows and the tag joins for the page's report ids in **two batched queries**, then stitch — do not query per report.
 
-- [ ] **Step 4: Fix the dead `Scope` filter**
+- [x] **Step 4: Fix the dead `Scope` filter**
 
 `GetReportsQuery.Scope` is declared but **never used** in the handler — filtering by scope silently does nothing today. Either wire it (`query = query.Where(r => r.Scope == parsed)`) or delete the property. **Wire it**; B2 exposes a scope filter.
 
-- [ ] **Step 5: Run tests + build**
+- [x] **Step 5: Run tests + build**
 
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add -A
