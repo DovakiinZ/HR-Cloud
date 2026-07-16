@@ -189,7 +189,7 @@ public class ReportRelationship : BaseEntity {
 - **Alias assignment is `SortOrder`-dependent.** `aliasByObjectId` fills as the loop walks in `SortOrder` order, and `sourceAlias` falls back to `"t0"` via `GetValueOrDefault`. A relationship whose Source is another relationship's Target **must sort after it**, or it silently joins the primary table instead of erroring. **Validate: Source must be the primary object, or a Target already introduced at a strictly lower `SortOrder`.**
 - **`TargetObjectId` must be unique per report** — `aliasByObjectId[rel.TargetObjectId] = alias` overwrites, so joining the same object twice yields an unaddressable alias.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test** — *deviation: the cross-row rules were extracted to a pure  and covered by 13 DB-free tests that actually run, instead of a  that skips locally. The DB round-trip test was not written.*
 
 `[SkippableFact]` mirroring the `ReportShareCommandTests` harness. Cover:
 - owner adds a valid relationship → round-trips through the list query;
@@ -197,12 +197,12 @@ public class ReportRelationship : BaseEntity {
 - duplicate `TargetObjectId` on the same report → `ValidationException`;
 - a Source that is neither the primary object nor a lower-`SortOrder` Target → `ValidationException`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests --filter FullyQualifiedName~ReportRelationshipCommandTests`
 Expected: FAIL — commands do not exist (compile error).
 
-- [ ] **Step 3: Write commands + query + handlers**
+- [x] **Step 3: Write commands + query + handlers**
 
 Mirror the **Sortings** pattern exactly (`ReportCommands.cs:85-93`, `260-281`):
 
@@ -225,13 +225,13 @@ public record GetReportRelationshipsQuery(Guid ReportDefinitionId) : IRequest<Li
 
 Gate the add/delete handlers with `IReportAccessService.EnsureCanEditAsync`, and the list handler with `EnsureCanReadAsync` — matching the share handlers. (Note the existing field/filter/grouping/sorting handlers do **not** call the access service, relying on the controller permission alone; the share handlers do. Follow the **share** precedent — it is the stricter and more recent one.)
 
-- [ ] **Step 4: Write `AddReportRelationshipValidator`**
+- [x] **Step 4: Write `AddReportRelationshipValidator`**
 
 In `ReportValidators.cs`. Enforce: `JoinField` non-empty and ≤200; `JoinType` ∈ {`Inner`,`Left`,`Right`} case-insensitive; `SourceObjectId` != `TargetObjectId`.
 
 The cross-row rules (unique target, source-ordering) need DB state, so enforce them **in the handler** with `ValidationException`, not in the FluentValidation validator.
 
-- [ ] **Step 5: Add the controller endpoints**
+- [x] **Step 5: Add the controller endpoints**
 
 Mirror the Sortings endpoints:
 
@@ -253,16 +253,16 @@ public async Task<ActionResult<ApiResponse>> DeleteRelationship(Guid relationshi
 { await Mediator.Send(new DeleteReportRelationshipCommand(relationshipId), ct); return OkResponse("Relationship removed"); }
 ```
 
-- [ ] **Step 6: Fix Clone to copy relationships**
+- [x] **Step 6: Fix Clone to copy relationships**
 
 `CloneReportCommandHandler` (`ReportCommands.cs:176-184`) copies Fields/Filters/Groupings/Sortings but **not Relationships** — so cloning a multi-object report silently produces a single-object one whose fields reference unjoined objects (which then fails at run time). Copy `Relationships` too, preserving `SortOrder`.
 
-- [ ] **Step 7: Run tests + build**
+- [x] **Step 7: Run tests + build**
 
 Run: `dotnet test backend/tests/HR.Modules.Platform.Tests`
 Expected: BUILD succeeds; new tests Skipped locally (or PASS with `REPORTS_TEST_DB`).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add -A
