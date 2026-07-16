@@ -33,12 +33,19 @@ export interface CatalogObject {
 }
 
 // ── Widget query spec (stored in widget Configuration JSONB) ──
-export type AggregationName = "Count" | "Sum" | "Average" | "Min" | "Max" | "DistinctCount" | "Percentage";
+export type AggregationName = "Count" | "Sum" | "Average" | "Min" | "Max" | "DistinctCount" | "Percentage" | "Formula";
 
 export interface WidgetFilterSpec {
   field: string;
   operator: string; // eq|ne|gt|gte|lt|lte|contains|startsWith|in|between|last_n_days|is_null|not_null
   value?: string | null;
+}
+
+export interface WidgetMeasure {
+  name: string;
+  aggregation: AggregationName;
+  aggregationField?: string | null;
+  filters?: WidgetFilterSpec[];
 }
 
 export interface WidgetQuerySpec {
@@ -51,6 +58,8 @@ export interface WidgetQuerySpec {
   limit?: number | null;
   requiredPermission?: string | null;
   filters: WidgetFilterSpec[];
+  measures?: WidgetMeasure[];
+  formula?: string;
 }
 
 export interface WidgetSuggestion {

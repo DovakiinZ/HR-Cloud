@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Check, ChevronLeft, ChevronRight, Loader2, Search, Sparkles, Wand2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, ChevronLeft, ChevronRight, Loader2, Plus, Search, Sparkles, Trash2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
-import { aiSuggestWidget, getCatalog } from "@/lib/api/dashboards";
-import { AggregationName, CatalogField, CatalogObject, WidgetQuerySpec } from "@/types/dashboard";
+import { aiSuggestWidget, getCatalog, validateWidgetFormula } from "@/lib/api/dashboards";
+import { AggregationName, CatalogField, CatalogObject, WidgetMeasure, WidgetQuerySpec } from "@/types/dashboard";
 import { WidgetCard } from "./widget-card";
 
 interface WidgetBuilderProps {
@@ -21,7 +21,20 @@ const AGGREGATIONS: { value: AggregationName; label: string; needsField: boolean
   { value: "Max", label: "الأعلى", needsField: true, measureOnly: true },
   { value: "DistinctCount", label: "عدد القيم المميزة", needsField: true, measureOnly: false },
   { value: "Percentage", label: "نسبة مئوية", needsField: false, measureOnly: false },
+  { value: "Formula", label: "محسوب (صيغة)", needsField: false, measureOnly: false },
 ];
+
+// Sub-aggregations available inside a Formula measure row (no Percentage / Formula nesting)
+const MEASURE_AGGS: { value: AggregationName; label: string; needsField: boolean }[] = [
+  { value: "Count", label: "العدد", needsField: false },
+  { value: "Sum", label: "المجموع", needsField: true },
+  { value: "Average", label: "المتوسط", needsField: true },
+  { value: "Min", label: "الأدنى", needsField: true },
+  { value: "Max", label: "الأعلى", needsField: true },
+  { value: "DistinctCount", label: "عدد القيم المميزة", needsField: false },
+];
+
+const DEFAULT_MEASURES: WidgetMeasure[] = [{ name: "m1", aggregation: "Count", aggregationField: null }];
 
 const VIS_LABELS: Record<string, string> = {
   KpiCard: "بطاقة مؤشر", Gauge: "مقياس", BarChart: "أعمدة", HorizontalBar: "أعمدة أفقية",
@@ -48,6 +61,12 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
 
+  // Formula mode state
+  const [measures, setMeasures] = useState<WidgetMeasure[]>(DEFAULT_MEASURES);
+  const [formula, setFormula] = useState("");
+  const [formulaError, setFormulaError] = useState<string | null>(null);
+  const formulaDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     getCatalog().then(setCatalog).catch(() => setCatalog([])).finally(() => setLoadingCatalog(false));
   }, []);
@@ -61,6 +80,7 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
 
   // Compatible visualizations given the current shape.
   const visOptions = useMemo(() => {
+    if (aggregation === "Formula") return ["KpiCard", "Gauge"];
     if (!groupBy) return aggregation === "Percentage" ? ["Gauge", "KpiCard"] : ["KpiCard", "Gauge"];
     if (groupField?.isDate) return ["LineChart", "TrendChart", "BarChart", "Table"];
     return ["BarChart", "HorizontalBar", "PieChart", "DonutChart", "ProgressWidget", "Leaderboard", "Table", "LineChart"];
@@ -71,22 +91,53 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
     if (!visOptions.includes(visualization)) setVisualization(visOptions[0]);
   }, [visOptions, visualization]);
 
-  // Percentage is a scalar concept → clear group-by.
+  // Percentage / Formula are scalar concepts → clear group-by.
   useEffect(() => {
-    if (aggregation === "Percentage" && groupBy) setGroupBy("");
+    if ((aggregation === "Percentage" || aggregation === "Formula") && groupBy) setGroupBy("");
   }, [aggregation, groupBy]);
 
-  const spec: WidgetQuerySpec = useMemo(() => ({
-    objectCode,
-    aggregation,
-    aggregationField: AGGREGATIONS.find((a) => a.value === aggregation)?.needsField ? aggField || null : null,
-    groupByField: groupBy || null,
-    dateGranularity: groupField?.isDate ? granularity : null,
-    visualization,
-    limit: 12,
-    requiredPermission: requiredPermission.trim() || null,
-    filters: [],
-  }), [objectCode, aggregation, aggField, groupBy, groupField, granularity, visualization, requiredPermission]);
+  // Formula live validation (debounced 400 ms)
+  const validateFormula = useCallback((text: string) => {
+    if (formulaDebounceRef.current) clearTimeout(formulaDebounceRef.current);
+    if (!text.trim()) { setFormulaError(null); return; }
+    formulaDebounceRef.current = setTimeout(async () => {
+      try {
+        const result = await validateWidgetFormula(text);
+        setFormulaError(result?.isValid ? null : (result?.error ?? "صيغة غير صالحة"));
+      } catch {
+        // network error — don't block the user
+      }
+    }, 400);
+  }, []);
+
+  const spec: WidgetQuerySpec = useMemo(() => {
+    if (aggregation === "Formula") {
+      return {
+        objectCode,
+        aggregation,
+        aggregationField: null,
+        groupByField: null,
+        dateGranularity: null,
+        visualization,
+        limit: 12,
+        requiredPermission: requiredPermission.trim() || null,
+        filters: [],
+        measures,
+        formula,
+      };
+    }
+    return {
+      objectCode,
+      aggregation,
+      aggregationField: AGGREGATIONS.find((a) => a.value === aggregation)?.needsField ? aggField || null : null,
+      groupByField: groupBy || null,
+      dateGranularity: groupField?.isDate ? granularity : null,
+      visualization,
+      limit: 12,
+      requiredPermission: requiredPermission.trim() || null,
+      filters: [],
+    };
+  }, [objectCode, aggregation, aggField, groupBy, groupField, granularity, visualization, requiredPermission, measures, formula]);
 
   const runAi = async () => {
     if (!aiPrompt.trim()) return;
@@ -100,6 +151,9 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
       setGranularity(s.spec.dateGranularity ?? "month");
       setVisualization(s.visualization);
       setTitleAr(s.titleAr || aiPrompt.trim());
+      // Hydrate formula fields if the AI suggestion carries them
+      if (s.spec.measures) setMeasures(s.spec.measures.length > 0 ? s.spec.measures : DEFAULT_MEASURES);
+      if (s.spec.formula !== undefined) setFormula(s.spec.formula ?? "");
       setStep(4);
       toast.success("تم إنشاء العنصر — راجع واحفظ");
     } catch {
@@ -110,7 +164,12 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
   };
 
   const aggDef = AGGREGATIONS.find((a) => a.value === aggregation)!;
-  const canPreview = !!objectCode && (!aggDef.needsField || !!aggField);
+  const isFormula = aggregation === "Formula";
+  const canPreview = !!objectCode && (
+    isFormula
+      ? measures.length > 0 && measures.every((m) => m.name.trim()) && !!formula.trim() && !formulaError
+      : (!aggDef.needsField || !!aggField)
+  );
   const canSave = canPreview && titleAr.trim().length > 0 && !!visualization;
 
   const filteredCatalog = useMemo(() => {
@@ -127,10 +186,16 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
   const stepValid = [
     !!objectCode,
     true, // property is optional
-    !aggDef.needsField || !!aggField,
+    isFormula ? (measures.length > 0 && measures.every((m) => m.name.trim()) && !!formula.trim() && !formulaError) : (!aggDef.needsField || !!aggField),
     !!visualization,
     titleAr.trim().length > 0,
   ];
+
+  // Measure editor helpers
+  const addMeasure = () => setMeasures((ms) => [...ms, { name: `m${ms.length + 1}`, aggregation: "Count", aggregationField: null }]);
+  const removeMeasure = (i: number) => setMeasures((ms) => ms.filter((_, idx) => idx !== i));
+  const updateMeasure = (i: number, patch: Partial<WidgetMeasure>) =>
+    setMeasures((ms) => ms.map((m, idx) => idx === i ? { ...m, ...patch } : m));
 
   return (
     <div className="flex h-full max-h-[85vh] flex-col">
@@ -212,7 +277,7 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
                       <span className="block text-xs text-muted-foreground">مؤشر واحد (KPI)</span>
                     </button>
                     {groupableFields.map((f) => (
-                      <button key={f.code} onClick={() => setGroupBy(f.code)} disabled={aggregation === "Percentage"}
+                      <button key={f.code} onClick={() => setGroupBy(f.code)} disabled={aggregation === "Percentage" || aggregation === "Formula"}
                         className={`border p-3 text-right text-sm disabled:opacity-40 ${groupBy === f.code ? "border-primary bg-primary/10" : "border-border hover:border-primary/50"}`}>
                         <span className="block font-medium">{f.nameAr}</span>
                         <span className="block text-xs text-muted-foreground">{f.isReference ? "مرجع" : f.isDate ? "تاريخ" : f.fieldType}</span>
@@ -242,7 +307,9 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
                       </button>
                     ))}
                   </div>
-                  {aggDef.needsField && (
+
+                  {/* Standard aggregation field picker — hidden for Formula */}
+                  {!isFormula && aggDef.needsField && (
                     <div className="space-y-1 pt-2">
                       <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">الحقل</label>
                       <select value={aggField} onChange={(e) => setAggField(e.target.value)} className="h-9 w-full border border-border bg-secondary px-3 text-sm">
@@ -254,6 +321,97 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
                       {aggDef.measureOnly && measureFields.length === 0 && (
                         <p className="text-xs text-destructive">لا توجد حقول رقمية في هذا الكائن</p>
                       )}
+                    </div>
+                  )}
+
+                  {/* Formula mode: measures editor + formula textarea */}
+                  {isFormula && (
+                    <div className="space-y-4 pt-2">
+                      {/* Measures editor */}
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">المقاييس</label>
+                          <button onClick={addMeasure}
+                            className="flex items-center gap-1 text-xs text-primary hover:underline">
+                            <Plus className="h-3 w-3" /> إضافة مقياس
+                          </button>
+                        </div>
+                        <div className="space-y-2">
+                          {measures.map((m, i) => {
+                            const subAgg = MEASURE_AGGS.find((a) => a.value === m.aggregation) ?? MEASURE_AGGS[0];
+                            return (
+                              <div key={i} className="flex items-center gap-2 border border-border bg-secondary/40 p-2">
+                                {/* Name */}
+                                <input
+                                  value={m.name}
+                                  onChange={(e) => updateMeasure(i, { name: e.target.value })}
+                                  placeholder="m1"
+                                  dir="ltr"
+                                  className="h-8 w-16 border border-border bg-background px-2 text-sm font-mono"
+                                />
+                                {/* Sub-aggregation */}
+                                <select
+                                  value={m.aggregation}
+                                  onChange={(e) => {
+                                    const val = e.target.value as AggregationName;
+                                    const needsF = MEASURE_AGGS.find((a) => a.value === val)?.needsField ?? false;
+                                    updateMeasure(i, { aggregation: val, aggregationField: needsF ? m.aggregationField : null });
+                                  }}
+                                  className="h-8 border border-border bg-background px-2 text-sm"
+                                >
+                                  {MEASURE_AGGS.map((a) => (
+                                    <option key={a.value} value={a.value}>{a.label}</option>
+                                  ))}
+                                </select>
+                                {/* Aggregation field (only when the sub-agg needs it) */}
+                                {subAgg.needsField && (
+                                  <select
+                                    value={m.aggregationField ?? ""}
+                                    onChange={(e) => updateMeasure(i, { aggregationField: e.target.value || null })}
+                                    className="h-8 flex-1 border border-border bg-background px-2 text-sm"
+                                  >
+                                    <option value="">— الحقل —</option>
+                                    {measureFields.map((f) => (
+                                      <option key={f.code} value={f.code}>{f.nameAr}</option>
+                                    ))}
+                                  </select>
+                                )}
+                                {!subAgg.needsField && <div className="flex-1" />}
+                                {/* Remove */}
+                                <button onClick={() => removeMeasure(i)} disabled={measures.length <= 1}
+                                  className="flex h-8 w-8 items-center justify-center text-muted-foreground hover:text-destructive disabled:opacity-30">
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Formula textarea */}
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">الصيغة</label>
+                        <p className="text-xs text-muted-foreground">استخدم أسماء المقاييس أعلاه (مثال: <span dir="ltr" className="font-mono">m1 / m2 * 100</span>)</p>
+                        <div className="relative">
+                          <textarea
+                            value={formula}
+                            onChange={(e) => { setFormula(e.target.value); validateFormula(e.target.value); }}
+                            dir="ltr"
+                            rows={3}
+                            placeholder="m1 / m2 * 100"
+                            className="w-full border border-border bg-secondary px-3 py-2 font-mono text-sm resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                          />
+                          {formula.trim() && !formulaError && (
+                            <Check className="absolute left-2 top-2 h-4 w-4 text-green-500" />
+                          )}
+                        </div>
+                        {formulaError && (
+                          <p className="text-xs text-destructive">{formulaError}</p>
+                        )}
+                        {formula.trim() && !formulaError && (
+                          <p className="text-xs text-green-600">الصيغة صالحة</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -289,8 +447,12 @@ export function WidgetBuilder({ onSave, onCancel, saving }: WidgetBuilderProps) 
                   </div>
                   <div className="border border-border bg-secondary/40 p-3 text-xs text-muted-foreground">
                     <p>الكائن: <span className="text-foreground">{object?.nameAr}</span></p>
-                    <p>الحساب: <span className="text-foreground">{aggDef.label}{aggField ? ` (${object?.fields.find((f) => f.code === aggField)?.nameAr})` : ""}</span></p>
-                    <p>التجميع: <span className="text-foreground">{groupField?.nameAr ?? "بدون"}</span></p>
+                    <p>الحساب: <span className="text-foreground">
+                      {isFormula
+                        ? `محسوب — ${measures.map((m) => m.name).join(", ")} → ${formula || "—"}`
+                        : `${aggDef.label}${aggField ? ` (${object?.fields.find((f) => f.code === aggField)?.nameAr})` : ""}`}
+                    </span></p>
+                    <p>التجميع: <span className="text-foreground">{isFormula ? "لا ينطبق" : (groupField?.nameAr ?? "بدون")}</span></p>
                     <p>العرض: <span className="text-foreground">{VIS_LABELS[visualization]}</span></p>
                   </div>
                 </div>

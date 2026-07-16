@@ -146,6 +146,13 @@ export const executeWidget = (widgetId: string, dashboardFilters?: WidgetFilterS
     body: { dashboardFilters },
   });
 
+// ── Formula validation (mirrors the reports client; safe to call as the user types) ──
+export const validateWidgetFormula = (formula: string) =>
+  apiFetch<{ isValid: boolean; error?: string | null }>("/api/platform/reports/validate-formula", {
+    method: "POST",
+    body: { formula },
+  });
+
 export const drilldownWidget = (
   spec: WidgetQuerySpec,
   segmentKey: string | null,
