@@ -66,6 +66,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
 
+        // Report schedule runner (background-safe export → stored file → email link)
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportScheduleRunner,
+            HR.Modules.Platform.Services.Reports.ReportScheduleRunner>();
+
         // Notification engine (bell + email queue) + document-expiry rule scanner
         services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
             HR.Modules.Platform.Services.Notifications.NotificationService>();

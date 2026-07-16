@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { BarChart3, Download, FileSpreadsheet, FileText, FileType, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { usePermission } from "@/lib/permissions";
@@ -10,10 +11,13 @@ const FORMATS: { key: ExportFormat; label: string; icon: typeof FileText }[] = [
   { key: "excel", label: "Excel", icon: FileSpreadsheet },
   { key: "csv", label: "CSV", icon: FileText },
   { key: "pdf", label: "PDF", icon: FileType },
+  { key: "sif", label: "WPS/SIF", icon: FileText },
 ];
 
 export default function ReportsPage() {
   const { allowed: canExport } = usePermission("Platform.Reports.Export");
+  const { allowed: canCreate } = usePermission("Platform.Reports.Create");
+  const { allowed: canEdit } = usePermission("Platform.Reports.Edit");
   const [reports, setReports] = useState<ReportDefinition[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -59,13 +63,20 @@ export default function ReportsPage() {
           <h1 className="text-2xl font-bold">التقارير</h1>
           <p className="text-sm text-muted-foreground mt-1">التقارير والإحصائيات — تشغيل وتصدير</p>
         </div>
-        <button
-          onClick={fetchReports}
-          className="inline-flex h-9 items-center gap-2 border border-border bg-secondary px-3 text-sm hover:bg-secondary/70"
-        >
-          <RefreshCw className="h-4 w-4" />
-          تحديث
-        </button>
+        <div className="flex items-center gap-2">
+          {canCreate && (
+            <Link href="/reports/builder" className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">
+              + تقرير جديد
+            </Link>
+          )}
+          <button
+            onClick={fetchReports}
+            className="inline-flex h-9 items-center gap-2 border border-border bg-secondary px-3 text-sm hover:bg-secondary/70"
+          >
+            <RefreshCw className="h-4 w-4" />
+            تحديث
+          </button>
+        </div>
       </div>
 
       {loading ? (
@@ -102,7 +113,7 @@ export default function ReportsPage() {
               {reports.map((r) => (
                 <tr key={r.id} className="border-b border-border/60 last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-3">
-                    <div className="font-medium">{r.nameAr || r.nameEn}</div>
+                    <Link href={`/reports/${r.id}`} className="font-medium hover:underline">{r.nameAr || r.nameEn}</Link>
                     <div className="text-xs text-muted-foreground">{r.nameEn}{r.code ? ` · ${r.code}` : ""}</div>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{r.reportType}</td>
@@ -118,9 +129,12 @@ export default function ReportsPage() {
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    {canExport ? (
+                    {canExport || canEdit ? (
                       <div className="flex items-center gap-1.5">
-                        {FORMATS.map((f) => {
+                        {canEdit && (
+                          <Link href={`/reports/builder/${r.id}`} className="inline-flex h-8 items-center gap-1.5 border border-border bg-secondary px-2.5 text-xs hover:bg-secondary/70">تعديل</Link>
+                        )}
+                        {canExport && FORMATS.map((f) => {
                           const key = `${r.id}:${f.key}`;
                           const Icon = f.icon;
                           return (

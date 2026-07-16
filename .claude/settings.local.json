@@ -94,7 +94,10 @@
       "Bash(rm -f _check.sql)",
       "Bash(grep -cE \"engine_payroll_run_population\" _check.sql)",
       "Bash(rm -f _scriptout.txt)",
-      "Bash(cmd *)"
+      "Bash(cmd *)",
+      "Bash(az webapp *)",
+      "Bash(Select-Object -First 40)",
+      "Bash(grep -iv \"//\")"
     ]
   }
 }

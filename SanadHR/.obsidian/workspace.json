@@ -1,0 +1,303 @@
+{
+  "main": {
+    "id": "1f95cbd29dbc63b6",
+    "type": "split",
+    "children": [
+      {
+        "id": "1a077196bf82382c",
+        "type": "split",
+        "children": [
+          {
+            "id": "a49ef910b92179ce",
+            "type": "tabs",
+            "dimension": 62.14080459770114,
+            "children": [
+              {
+                "id": "4b729c5e60fe5706",
+                "type": "leaf",
+                "state": {
+                  "type": "graph",
+                  "state": {},
+                  "icon": "lucide-git-fork",
+                  "title": "Graph view"
+                }
+              }
+            ]
+          },
+          {
+            "id": "e44245ed77979d22",
+            "type": "tabs",
+            "dimension": 37.85919540229885,
+            "children": [
+              {
+                "id": "c4903b83f7687936",
+                "type": "leaf",
+                "pinned": true,
+                "state": {
+                  "type": "terminal:terminal",
+                  "state": {
+                    "terminal:terminal": {
+                      "cwd": "D:\\HR-Cloud-main\\HR-Cloud-main\\SanadHR",
+                      "focus": false,
+                      "profile": {
+                        "args": [],
+                        "environment": [],
+                        "executable": "C:\\Windows\\System32\\cmd.exe",
+                        "followTheme": true,
+                        "name": "",
+                        "platforms": {
+                          "win32": true
+                        },
+                        "pythonExecutable": "python3",
+                        "restoreHistory": false,
+                        "rightClickAction": "copyPaste",
+                        "successExitCodes": [
+                          "0",
+                          "SIGINT",
+                          "SIGTERM"
+                        ],
+                        "terminalOptions": {
+                          "documentOverride": null
+                        },
+                        "type": "integrated",
+                        "useWin32Conhost": true
+                      },
+                      "profileSourceId": "win32IntegratedDefault",
+                      "serial": null,
+                      "userTitle": ""
+                    }
+                  },
+                  "pinned": true,
+                  "icon": "terminal",
+                  "title": "Terminal: cmd"
+                }
+              }
+            ]
+          }
+        ],
+        "direction": "horizontal"
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "8dd70802a17f96d1",
+    "type": "split",
+    "children": [
+      {
+        "id": "bf96c783d24c2c9e",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "db83c39bbfb49165",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": true
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Files"
+            }
+          },
+          {
+            "id": "d50e3ee14f7be7ba",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Search"
+            }
+          },
+          {
+            "id": "6cde0d78b51187bd",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Bookmarks"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "53dcdb4ad21cce65",
+    "type": "split",
+    "children": [
+      {
+        "id": "9714bfc94468dbe4",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "55aa744d1d2832f5",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Welcome.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Backlinks for Welcome"
+            }
+          },
+          {
+            "id": "8c67e236a053c87c",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Welcome.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Outgoing links from Welcome"
+            }
+          },
+          {
+            "id": "c9efddcae2304a21",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Tags"
+            }
+          },
+          {
+            "id": "a461422ffa6670dc",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "All properties"
+            }
+          },
+          {
+            "id": "3d8d8805f337f110",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Welcome.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Outline of Welcome"
+            }
+          },
+          {
+            "id": "48a32ff3b68a57ba",
+            "type": "leaf",
+            "state": {
+              "type": "git-view",
+              "state": {},
+              "icon": "git-pull-request",
+              "title": "Source Control"
+            }
+          },
+          {
+            "id": "22b98e88bfa4608c",
+            "type": "leaf",
+            "state": {
+              "type": "claudian-view",
+              "state": {},
+              "icon": "bot",
+              "title": "Claudian"
+            }
+          }
+        ],
+        "currentTab": 6
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false,
+      "terminal:Open terminal": false,
+      "obsidian-git:Open Git source control": false,
+      "realclaudian:Open Claudian": false
+    }
+  },
+  "active": "4b729c5e60fe5706",
+  "lastOpenFiles": [
+    "ROADMAP.md",
+    "DECISION_LOG.md",
+    "docs/architecture/Master Data Engine.md",
+    "docs/architecture/Snapshot and Versioning.md",
+    "docs/architecture/Architecture Overview.md",
+    "docs/architecture/AGENTS Directive.md",
+    "docs/architecture/Arabic RTL.md",
+    "Untitled.md",
+    "FEATURE_MAP.md",
+    "docs/competitors/HiBob.md",
+    "CLAUDE.md",
+    "docs/competitors/Vercel Dashboard.md.tmp.9380.a6fd11577857",
+    "docs/competitors/Jisr.md",
+    "docs/competitors/Competitor Index.md.tmp.9380.bb1f7f445fe2",
+    "docs/competitors/Jira.md",
+    "docs/competitors/ZenHR.md",
+    "docs/competitors/Cerkl HR.md",
+    "docs/competitors/Bayzat.md",
+    "FEATURE_MAP.md.tmp.9380.80e3452fb475",
+    "Home.md.tmp.9380.0252437c5d0a",
+    "Home.md.tmp.9380.796a34e6cc31",
+    "docs/competitors/Monday.md",
+    "docs/competitors/Monday.md.tmp.9380.e32ba564d116",
+    "docs/competitors/Vercel Dashboard.md",
+    "COMPETITORS.md",
+    "docs/competitors/Jira.md.tmp.9380.6175de2d3529",
+    "docs/competitors/Stripe Dashboard.md",
+    "docs/competitors/Stripe Dashboard.md.tmp.9380.e081741a19ba",
+    "docs/competitors/ADP Workforce Now.md",
+    "docs/competitors/ADP Workforce Now.md.tmp.9380.71ff2d2ecf92",
+    "docs/competitors/Notion.md",
+    "docs/competitors/Notion.md.tmp.9380.bf2a023d0965",
+    "docs/competitors/GulfHR.md",
+    "docs/competitors/Personio.md",
+    "docs/competitors/Slack.md",
+    "docs/competitors/UKG Pro.md",
+    "Untitled.canvas"
+  ]
+}
