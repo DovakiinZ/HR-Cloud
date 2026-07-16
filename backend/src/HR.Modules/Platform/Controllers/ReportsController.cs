@@ -39,17 +39,34 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> Delete(Guid id, CancellationToken ct)
     { await Mediator.Send(new DeleteReportCommand(id), ct); return OkResponse("Report deleted"); }
 
+    // Body is optional: the pre-parameter callers post /run with no body at all.
     [HttpPost("{id:guid}/run")]
     [RequirePermission("Platform.Reports.View")]
-    public async Task<ActionResult<ApiResponse<ReportResult>>> Run(Guid id, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
-    { var result = await Mediator.Send(new RunReportQuery(id, page, pageSize), ct); return OkResponse(result); }
+    public async Task<ActionResult<ApiResponse<ReportResult>>> Run(Guid id, [FromBody] RunReportRequest? request = null, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken ct = default)
+    { var result = await Mediator.Send(new RunReportQuery(id, page, pageSize, request?.Parameters), ct); return OkResponse(result); }
 
+    // Export is a GET (the browser navigates to it for the download), so parameters ride the query
+    // string as p.<fieldCode>=<value> rather than a body. Without them an export of a parameterized
+    // report would quietly fall back to stored defaults and disagree with the table on screen.
     [HttpGet("{id:guid}/export")]
     [RequirePermission("Platform.Reports.Export")]
     public async Task<IActionResult> Export(Guid id, [FromQuery] string format = "excel", CancellationToken ct = default)
     {
-        var file = await Mediator.Send(new ExportReportQuery(id, format), ct);
+        var file = await Mediator.Send(new ExportReportQuery(id, format, ReadParameterQuery()), ct);
         return File(file.Content, file.ContentType, file.FileName);
+    }
+
+    private const string ParameterQueryPrefix = "p.";
+
+    private IReadOnlyDictionary<string, string?>? ReadParameterQuery()
+    {
+        var parameters = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in Request.Query)
+        {
+            if (kv.Key.StartsWith(ParameterQueryPrefix, StringComparison.OrdinalIgnoreCase))
+                parameters[kv.Key[ParameterQueryPrefix.Length..]] = kv.Value.ToString();
+        }
+        return parameters.Count > 0 ? parameters : null;
     }
 
     [HttpPost("{id:guid}/publish")]

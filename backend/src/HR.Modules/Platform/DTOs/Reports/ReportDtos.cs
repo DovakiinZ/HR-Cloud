@@ -109,6 +109,13 @@ public class ReportRelationshipDto
     public int SortOrder { get; set; }
 }
 
+public class RunReportRequest
+{
+    /// <summary>Values for filters marked IsParameter, keyed by field code (case-insensitive).
+    /// A Between filter's upper bound is keyed "&lt;fieldCode&gt;:to".</summary>
+    public Dictionary<string, string?>? Parameters { get; set; }
+}
+
 public class ValidateFormulaRequest
 {
     public string? Formula { get; set; }

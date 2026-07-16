@@ -211,7 +211,7 @@ public class ReportExecutionIntegrationTests
 
         // ── Act ───────────────────────────────────────────────────────────────
 
-        var result = await execService.RunAsync(reportId, page: 1, pageSize: 50, ct: default);
+        var result = await execService.RunAsync(reportId, page: 1, pageSize: 50, parameters: null, ct: default);
 
         // ── Assert ────────────────────────────────────────────────────────────
 

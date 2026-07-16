@@ -83,7 +83,7 @@ public class ReportExportServiceTests
         var writers = new IExportWriter[] { new CsvExportWriter(), new PdfExportWriter() };
         var svc = new ReportExportService(db, exec, access, writers);
 
-        var file = await svc.ExportAsync(reportId, HR.Application.Engines.Finance.Export.ExportFormat.Csv, default);
+        var file = await svc.ExportAsync(reportId, HR.Application.Engines.Finance.Export.ExportFormat.Csv, parameters: null, default);
 
         file.ContentType.Should().Be("text/csv");
         file.FileName.Should().EndWith(".csv");

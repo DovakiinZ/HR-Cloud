@@ -31,18 +31,18 @@ public sealed class ReportExecutionService : IReportExecutionService
         _resolver = resolver;
     }
 
-    public Task<ReportResult> RunAsync(Guid reportId, int page, int pageSize, CancellationToken ct)
-        => RunCoreAsync(reportId, Math.Max(1, page), Math.Clamp(pageSize, 1, 200), ct);
+    public Task<ReportResult> RunAsync(Guid reportId, int page, int pageSize, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct)
+        => RunCoreAsync(reportId, Math.Max(1, page), Math.Clamp(pageSize, 1, 200), parameters, ct);
 
     /// <inheritdoc cref="IReportExecutionService.RunForExportAsync"/>
-    public Task<ReportResult> RunForExportAsync(Guid reportId, CancellationToken ct)
-        => RunCoreAsync(reportId, 1, RowCap, ct);
+    public Task<ReportResult> RunForExportAsync(Guid reportId, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct)
+        => RunCoreAsync(reportId, 1, RowCap, parameters, ct);
 
     /// <summary>
     /// Shared execution pipeline. Callers are responsible for validating/clamping
     /// <paramref name="page"/> and <paramref name="pageSize"/> before invoking.
     /// </summary>
-    private async Task<ReportResult> RunCoreAsync(Guid reportId, int page, int pageSize, CancellationToken ct)
+    private async Task<ReportResult> RunCoreAsync(Guid reportId, int page, int pageSize, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct)
     {
         // 1. Load the report definition with all child collections.
         var report = await _db.Set<ReportDefinition>().AsNoTracking()
@@ -55,14 +55,14 @@ public sealed class ReportExecutionService : IReportExecutionService
             ?? throw new NotFoundException("ReportDefinition", reportId);
 
         // 2. Resolve into an execution model (objects, joins, columns, filters, sorts, computed).
-        var model = await _resolver.BuildModelAsync(report, ct);
+        var model = await _resolver.BuildModelAsync(report, parameters, ct);
 
         // 3. Build parameterized SQL (LIMIT RowCap+1 so we can detect truncation).
-        var (sql, parameters) = ReportSqlBuilder.Build(model.Query, _user.TenantId, RowCap);
+        var (sql, sqlParameters) = ReportSqlBuilder.Build(model.Query, _user.TenantId, RowCap);
 
         // 4. Execute via raw ADO, keying each row by OutputCode.
         var rows = new List<ReportRow>();
-        await ReadAsync(sql, parameters, ct, reader =>
+        await ReadAsync(sql, sqlParameters, ct, reader =>
         {
             var row = new ReportRow();
             foreach (var col in model.Query.Columns)

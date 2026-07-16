@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using HR.Application.Engines.Finance.Export;
@@ -10,5 +11,7 @@ public sealed record ReportExportFile(byte[] Content, string ContentType, string
 
 public interface IReportExportService
 {
-    Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, CancellationToken ct);
+    /// <param name="parameters">Must match the on-screen run's parameter values, or the exported
+    /// file silently disagrees with what the user was looking at.</param>
+    Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct);
 }

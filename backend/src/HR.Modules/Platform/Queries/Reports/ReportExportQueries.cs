@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using HR.Application.Common.Exceptions;
@@ -8,7 +9,9 @@ using MediatR;
 
 namespace HR.Modules.Platform.Queries.Reports;
 
-public record ExportReportQuery(Guid Id, string Format) : IRequest<ReportExportFile>;
+public record ExportReportQuery(
+    Guid Id, string Format,
+    IReadOnlyDictionary<string, string?>? Parameters = null) : IRequest<ReportExportFile>;
 
 public class ExportReportQueryHandler : IRequestHandler<ExportReportQuery, ReportExportFile>
 {
@@ -19,6 +22,6 @@ public class ExportReportQueryHandler : IRequestHandler<ExportReportQuery, Repor
     {
         if (!Enum.TryParse<ExportFormat>(request.Format, ignoreCase: true, out var fmt))
             throw new ValidationException(new[] { new FluentValidation.Results.ValidationFailure("format", $"Unknown export format '{request.Format}'. Use excel, csv, or pdf.") });
-        return _export.ExportAsync(request.Id, fmt, ct);
+        return _export.ExportAsync(request.Id, fmt, request.Parameters, ct);
     }
 }

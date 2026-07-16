@@ -13,7 +13,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Platform.Queries.Reports;
 
-public record RunReportQuery(Guid Id, int Page, int PageSize) : IRequest<ReportResult>;
+public record RunReportQuery(
+    Guid Id, int Page, int PageSize,
+    IReadOnlyDictionary<string, string?>? Parameters = null) : IRequest<ReportResult>;
 
 public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResult>
 {
@@ -26,7 +28,7 @@ public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResul
     public async Task<ReportResult> Handle(RunReportQuery request, CancellationToken ct)
     {
         await _access.EnsureCanReadAsync(request.Id, ct);
-        var result = await _exec.RunAsync(request.Id, request.Page, request.PageSize, ct);
+        var result = await _exec.RunAsync(request.Id, request.Page, request.PageSize, request.Parameters, ct);
         var state = await ReportUserStateHelper.GetOrCreateAsync(_db, _user.UserId, request.Id, ct);
         state.LastViewedAt = DateTime.UtcNow;
         await _db.SaveChangesAsync(ct);

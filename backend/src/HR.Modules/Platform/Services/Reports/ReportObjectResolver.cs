@@ -20,7 +20,10 @@ public sealed class ReportObjectResolver : IReportObjectResolver
     public ReportObjectResolver(ApplicationDbContext db, IObjectCatalogService catalog)
     { _db = db; _catalog = catalog; }
 
-    public async Task<ReportExecutionModel> BuildModelAsync(ReportDefinition report, CancellationToken ct)
+    public async Task<ReportExecutionModel> BuildModelAsync(
+        ReportDefinition report,
+        IReadOnlyDictionary<string, string?>? parameters,
+        CancellationToken ct)
     {
         // 1. Gather object Guids (primary + relationship targets/sources).
         var objectIds = new HashSet<Guid> { report.PrimaryObjectId };
@@ -96,14 +99,22 @@ public sealed class ReportObjectResolver : IReportObjectResolver
                     "a report cannot select two fields with the same code in R1.");
         }
 
-        // 4. Filters — object-field filters push to SQL; unknown field codes are silently ignored.
+        // 4. Filters — resolve against the primary object and push to SQL.
+        // A filter whose field is not on the primary object is an error, not a no-op: silently
+        // dropping it returns unfiltered numbers that look authoritative. R1 does not filter on
+        // joined objects' fields, so say so rather than answer the wrong question.
         foreach (var flt in report.Filters)
         {
             var rf = primary.Field(flt.FieldCode);
-            if (rf is null) continue; // unknown → ignored, never injected
+            if (rf is null)
+                throw Invalid("filter",
+                    $"Filter field '{flt.FieldCode}' is not a field of the primary object '{primary.Code}'; " +
+                    "filtering on a joined object's field is not supported in R1.");
+
+            var (value, valueTo) = ReportParameterBinder.Resolve(flt, parameters);
             query.Filters.Add(new ReportFilterModel
             {
-                TableAlias = "t0", Field = rf, Operator = flt.Operator, Value = flt.Value, ValueTo = flt.ValueTo,
+                TableAlias = "t0", Field = rf, Operator = flt.Operator, Value = value, ValueTo = valueTo,
             });
         }
 

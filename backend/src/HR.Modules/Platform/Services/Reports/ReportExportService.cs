@@ -23,7 +23,7 @@ public sealed class ReportExportService : IReportExportService
     public ReportExportService(ApplicationDbContext db, IReportExecutionService exec, IReportAccessService access, IEnumerable<IExportWriter> writers)
     { _db = db; _exec = exec; _access = access; _writers = writers; }
 
-    public async Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, CancellationToken ct)
+    public async Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct)
     {
         await _access.EnsureCanReadAsync(reportId, ct);
 
@@ -34,7 +34,7 @@ public sealed class ReportExportService : IReportExportService
             .Select(r => new { r.NameEn, r.Code }).FirstOrDefaultAsync(ct)
             ?? throw new NotFoundException("ReportDefinition", reportId);
 
-        var result = await _exec.RunForExportAsync(reportId, ct);
+        var result = await _exec.RunForExportAsync(reportId, parameters, ct);
         var dataset = ReportResultFlattener.Flatten(result, meta.NameEn);
         var bytes = writer.Write(dataset);
 
