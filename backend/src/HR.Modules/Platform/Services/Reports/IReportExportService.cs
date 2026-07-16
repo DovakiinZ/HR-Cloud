@@ -11,4 +11,5 @@ public sealed record ReportExportFile(byte[] Content, string ContentType, string
 public interface IReportExportService
 {
     Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, CancellationToken ct);
+    Task<ReportExportFile> ExportSifAsync(Guid reportId, CancellationToken ct);
 }

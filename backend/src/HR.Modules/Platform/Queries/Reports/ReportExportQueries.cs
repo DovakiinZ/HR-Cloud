@@ -17,8 +17,11 @@ public class ExportReportQueryHandler : IRequestHandler<ExportReportQuery, Repor
 
     public Task<ReportExportFile> Handle(ExportReportQuery request, CancellationToken ct)
     {
+        if (string.Equals(request.Format, "sif", StringComparison.OrdinalIgnoreCase))
+            return _export.ExportSifAsync(request.Id, ct);
+
         if (!Enum.TryParse<ExportFormat>(request.Format, ignoreCase: true, out var fmt))
-            throw new ValidationException(new[] { new FluentValidation.Results.ValidationFailure("format", $"Unknown export format '{request.Format}'. Use excel, csv, or pdf.") });
+            throw new ValidationException(new[] { new FluentValidation.Results.ValidationFailure("format", $"Unknown export format '{request.Format}'. Use excel, csv, pdf, or sif.") });
         return _export.ExportAsync(request.Id, fmt, ct);
     }
 }

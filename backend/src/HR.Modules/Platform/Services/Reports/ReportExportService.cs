@@ -43,4 +43,20 @@ public sealed class ReportExportService : IReportExportService
         var fileName = $"{safe}-{stamp}.{writer.Extension}";
         return new ReportExportFile(bytes, writer.ContentType, fileName);
     }
+
+    public async Task<ReportExportFile> ExportSifAsync(Guid reportId, CancellationToken ct)
+    {
+        await _access.EnsureCanReadAsync(reportId, ct);
+
+        var meta = await _db.Set<ReportDefinition>().Where(r => r.Id == reportId)
+            .Select(r => new { r.Code }).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("ReportDefinition", reportId);
+
+        var result = await _exec.RunForExportAsync(reportId, ct);
+        var bytes = SifReportExporter.Export(result); // throws ValidationException if WPS columns are missing
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
+        var safe = string.IsNullOrWhiteSpace(meta.Code) ? "report" : meta.Code;
+        return new ReportExportFile(bytes, "text/csv", $"{safe}-wps-sif-{stamp}.csv");
+    }
 }
