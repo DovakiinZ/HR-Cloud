@@ -97,16 +97,15 @@ export interface ReportResult {
   totalCount: number; page: number; pageSize: number; truncated: boolean;
 }
 
-// ── Object catalog (mirror CatalogObjectDto / CatalogFieldDto) ──
-export interface CatalogField {
-  code: string; nameEn: string; nameAr: string; fieldType: string;
-  isMeasure: boolean; isGroupable: boolean; isFilterable: boolean; isDate: boolean;
-  isReference: boolean; referenceObjectCode?: string | null;
-  options?: { value: number; label: string }[] | null;
+// ── ObjectRegistry types (mirror ObjectDefinitionDto / ObjectFieldDto) ──
+export interface ObjectDefinitionField {
+  id: string; code: string; nameEn: string; nameAr: string; fieldType: string;
+  isFilterable: boolean; isSortable: boolean; isSearchable: boolean;
 }
-export interface CatalogObject {
-  code: string; nameEn: string; nameAr: string; module: string; icon?: string | null;
-  fieldCount: number; fields: CatalogField[];
+export interface ObjectDefinitionRegistry {
+  id: string; code: string; nameEn: string; nameAr: string;
+  module: string; tableName: string; isActive: boolean;
+  fields: ObjectDefinitionField[];
 }
 
 // ── Schedules (mirror ReportScheduleDto) ──
@@ -150,8 +149,7 @@ export const addSorting = (id: string, body: Record<string, unknown>) =>
 export const deleteSorting = (sortingId: string) =>
   apiFetch<unknown>(`/api/platform/reports/sortings/${sortingId}`, { method: "DELETE" });
 
-export const getCatalogObjects = () => apiFetch<CatalogObject[]>(`/api/platform/registry/objects`);
-export const getObjectFields = (code: string) => apiFetch<CatalogField[]>(`/api/platform/registry/objects/${code}/fields`);
+export const getObjectDefinitions = () => apiFetch<ObjectDefinitionRegistry[]>("/api/platform/objects");
 
 export const getSchedules = (id: string) => apiFetch<ReportSchedule[]>(`/api/platform/reports/${id}/schedules`);
 export const addSchedule = (id: string, body: Record<string, unknown>) =>

@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import {
   getReport, createReport, updateReport, publishReport, runReport,
   addField, deleteField, addFilter, deleteFilter, addGrouping, deleteGrouping,
-  addSorting, deleteSorting, getCatalogObjects, getObjectFields,
-  ReportDetail, ReportResult, CatalogObject, CatalogField,
+  addSorting, deleteSorting, getObjectDefinitions,
+  ReportDetail, ReportResult, ObjectDefinitionRegistry, ObjectDefinitionField,
 } from "@/lib/api/reports";
 import { ReportTable } from "@/components/reports/report-table";
 
@@ -22,6 +22,7 @@ const CLS_BTN_PRIMARY = "inline-flex h-9 items-center gap-2 bg-primary px-4 text
 const REPORT_TYPES = [{ v: 1, l: "جدولي" }, { v: 2, l: "ملخّص" }, { v: 3, l: "مصفوفة" }];
 const SCOPES = [{ v: 1, l: "شخصي" }, { v: 2, l: "الشركة" }, { v: 3, l: "قسم" }];
 const OPERATORS = [{ v: 1, l: "يساوي" }, { v: 2, l: "لا يساوي" }, { v: 3, l: "يحتوي" }, { v: 4, l: "يبدأ بـ" }, { v: 5, l: "ينتهي بـ" }];
+const MEASURE_TYPES = ["number", "decimal", "currency", "money", "int", "integer", "double", "float"];
 
 export default function ReportBuilderPage({ params }: { params: Promise<{ id?: string[] }> }) {
   const { id: idParam } = use(params);
@@ -31,8 +32,8 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
   const [step, setStep] = useState(0);
   const [reportId, setReportId] = useState<string | undefined>(existingId);
   const [report, setReport] = useState<ReportDetail | null>(null);
-  const [objects, setObjects] = useState<CatalogObject[]>([]);
-  const [fields, setFields] = useState<CatalogField[]>([]);
+  const [defs, setDefs] = useState<ObjectDefinitionRegistry[]>([]);
+  const [selectedDef, setSelectedDef] = useState<ObjectDefinitionRegistry | null>(null);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<ReportResult | null>(null);
 
@@ -40,24 +41,23 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
   const [form, setForm] = useState({ code: "", nameEn: "", nameAr: "", description: "", reportType: 1, scope: 2, primaryObjectId: "" });
 
   useEffect(() => { queueMicrotask(async () => {
-    try { setObjects(await getCatalogObjects()); } catch { toast.error("تعذر تحميل الكائنات"); }
+    let activeDefs: ObjectDefinitionRegistry[] = [];
+    try {
+      const all = await getObjectDefinitions();
+      activeDefs = all.filter((d) => d.isActive !== false);
+      setDefs(activeDefs);
+    } catch { toast.error("تعذر تحميل الكائنات"); }
     if (existingId) {
       try {
         const r = await getReport(existingId);
         setReport(r);
         setForm({ code: r.code, nameEn: r.nameEn, nameAr: r.nameAr, description: r.description ?? "", reportType: Number(r.reportType) || 1, scope: Number(r.scope) || 2, primaryObjectId: r.primaryObjectId });
+        // In edit mode, find the matching ObjectDefinitionRegistry by id to drive the fields panel.
+        const found = activeDefs.find((d) => d.id === r.primaryObjectId) ?? null;
+        setSelectedDef(found);
       } catch { toast.error("تعذر تحميل التقرير"); }
     }
   }); }, [existingId]);
-
-  // Load catalog fields for the chosen object (by code). The catalog objects carry a Code; the
-  // report stores PrimaryObjectId (a registry Guid). We send the selected object's code as
-  // primaryObjectId on create — this is a known simplification per the plan: the backend may
-  // accept the code or resolve the Guid itself (concern noted in task-A3-report.md).
-  const [primaryObjectCode, setPrimaryObjectCode] = useState<string>("");
-  useEffect(() => { if (!primaryObjectCode) return; queueMicrotask(async () => {
-    try { setFields(await getObjectFields(primaryObjectCode)); } catch { /* ignore */ }
-  }); }, [primaryObjectCode]);
 
   const refreshReport = useCallback(async () => {
     if (reportId) setReport(await getReport(reportId));
@@ -119,9 +119,13 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
           </Field>
           {!reportId && (
             <Field label="الكائن الأساسي">
-              <select value={form.primaryObjectId} onChange={(e) => { const o = objects.find((x) => x.code === e.target.value); setForm({ ...form, primaryObjectId: o ? o.code : "" }); setPrimaryObjectCode(e.target.value); }} className={CLS_INPUT}>
+              <select value={form.primaryObjectId} onChange={(e) => {
+                const def = defs.find((d) => d.id === e.target.value) ?? null;
+                setForm({ ...form, primaryObjectId: def ? def.id : "" });
+                setSelectedDef(def);
+              }} className={CLS_INPUT}>
                 <option value="">— اختر —</option>
-                {objects.map((o) => <option key={o.code} value={o.code}>{o.nameAr || o.nameEn}</option>)}
+                {defs.map((d) => <option key={d.id} value={d.id}>{d.nameAr || d.nameEn}</option>)}
               </select>
               <p className="text-xs text-muted-foreground mt-1">ملاحظة: الكائن الأساسي يُحدَّد مرة واحدة عند الإنشاء.</p>
             </Field>
@@ -134,7 +138,7 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
 
       {/* Step 1 — Fields */}
       {step === 1 && reportId && (
-        <FieldsStep report={report} fields={fields} reportId={reportId} onChange={refreshReport} loadCode={setPrimaryObjectCode} />
+        <FieldsStep report={report} selectedDef={selectedDef} reportId={reportId} onChange={refreshReport} />
       )}
 
       {/* Step 2 — Filters */}
@@ -184,23 +188,26 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label className="block"><span className="text-sm font-medium">{label}</span><div className="mt-1">{children}</div></label>;
 }
 
-function FieldsStep({ report, fields, reportId, onChange, loadCode }: { report: ReportDetail | null; fields: CatalogField[]; reportId: string; onChange: () => Promise<void>; loadCode: (c: string) => void }) {
-  // If fields haven't loaded (edit mode), let the user trigger a catalog load by object code.
+function FieldsStep({ report, selectedDef, reportId, onChange }: { report: ReportDetail | null; selectedDef: ObjectDefinitionRegistry | null; reportId: string; onChange: () => Promise<void> }) {
+  const availableFields: ObjectDefinitionField[] = selectedDef?.fields ?? [];
   return (
     <div className="grid gap-6 md:grid-cols-2">
       <div className="border border-border bg-card p-4">
         <h3 className="font-semibold mb-3">الحقول المتاحة</h3>
-        {fields.length === 0 && <p className="text-sm text-muted-foreground">لا توجد حقول محمّلة. ارجع للأساسيات لاختيار الكائن.</p>}
+        {availableFields.length === 0 && <p className="text-sm text-muted-foreground">لا توجد حقول محمّلة. ارجع للأساسيات لاختيار الكائن.</p>}
         <ul className="space-y-1 max-h-96 overflow-auto">
-          {fields.map((f) => (
-            <li key={f.code} className="flex items-center justify-between">
-              <span className="text-sm">{f.nameAr || f.nameEn}</span>
-              <button className="text-primary" title="أضف"
-                onClick={async () => { await addField(reportId, { fieldType: f.isMeasure ? 3 : 1, fieldCode: f.code, displayNameEn: f.nameEn, displayNameAr: f.nameAr, aggregation: f.isMeasure ? 1 : null, width: 120, sortOrder: (report?.fields.length ?? 0) }); await onChange(); }}>
-                <Plus className="h-4 w-4" />
-              </button>
-            </li>
-          ))}
+          {availableFields.map((f) => {
+            const isMeasure = MEASURE_TYPES.includes(f.fieldType?.toLowerCase?.() ?? "");
+            return (
+              <li key={f.code} className="flex items-center justify-between">
+                <span className="text-sm">{f.nameAr || f.nameEn}</span>
+                <button className="text-primary" title="أضف"
+                  onClick={async () => { await addField(reportId, { fieldType: isMeasure ? 3 : 1, fieldCode: f.code, displayNameEn: f.nameEn, displayNameAr: f.nameAr, aggregation: isMeasure ? 1 : null, width: 120, sortOrder: (report?.fields.length ?? 0) }); await onChange(); }}>
+                  <Plus className="h-4 w-4" />
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </div>
       <div className="border border-border bg-card p-4">
