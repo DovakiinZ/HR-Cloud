@@ -123,9 +123,10 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteSorting(Guid sortingId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportSortingCommand(sortingId), ct); return OkResponse("Sorting removed"); }
 
-    // Formula validation — pure, no DB, so the builder can validate as the user types.
+    // Formula validation — pure, no DB, so the reports builder AND the dashboard widget builder
+    // can validate as the user types (widened to Dashboards.View for the widget Calculated mode).
     [HttpPost("validate-formula")]
-    [RequirePermission("Platform.Reports.Edit")]
+    [RequirePermission("Platform.Reports.Edit", "Platform.Dashboards.View")]
     public ActionResult<ApiResponse<FormulaValidationDto>> ValidateFormula([FromBody] ValidateFormulaRequest request)
     {
         var error = ReportFormulaCompiler.Validate(request.Formula);
