@@ -81,6 +81,7 @@ builder.Services.AddPlatformModule();
 
 // Background: scan employee documents against notification rules and create expiry reminders.
 builder.Services.AddHostedService<HR.Api.Services.DocumentExpiryHostedService>();
+builder.Services.AddHostedService<HR.Api.Services.ReportScheduleHostedService>();
 
 // Optional durable background execution for large payroll runs. Off by default — the in-process
 // scheduler (registered in AddInfrastructure) handles execution inline unless this is enabled.
