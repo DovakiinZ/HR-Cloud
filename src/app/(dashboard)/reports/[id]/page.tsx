@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
@@ -8,6 +8,7 @@ import { usePermission } from "@/lib/permissions";
 import { getReport, runReport, exportReport, ReportDefinition, ReportResult, ExportFormat } from "@/lib/api/reports";
 import { ReportTable } from "@/components/reports/report-table";
 import { SchedulePanel } from "@/components/reports/schedule-panel";
+import { ReportParameters } from "@/components/reports/report-parameters";
 
 const FORMATS: { key: ExportFormat; label: string }[] = [
   { key: "excel", label: "Excel" }, { key: "csv", label: "CSV" }, { key: "pdf", label: "PDF" },
@@ -23,21 +24,43 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
   const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState<string | null>(null);
+  // Draft inputs (edited in the panel) vs applied (what the current run used).
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [applied, setApplied] = useState<Record<string, string>>({});
+
+  const paramFilters = useMemo(() => (report?.filters ?? []).filter((f) => f.isParameter), [report?.filters]);
+
+  const nonBlank = (m: Record<string, string>) => Object.fromEntries(Object.entries(m).filter(([, v]) => v !== "" && v != null));
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, res] = await Promise.all([getReport(id), runReport(id, { page, pageSize: 50 })]);
+      const parameters = nonBlank(applied);
+      const [r, res] = await Promise.all([getReport(id), runReport(id, { page, pageSize: 50, parameters })]);
       setReport(r); setResult(res);
     } catch { toast.error("تعذر تحميل التقرير"); }
     finally { setLoading(false); }
-  }, [id, page]);
+  }, [id, page, applied]);
 
   useEffect(() => { queueMicrotask(() => { load(); }); }, [load]);
 
+  // Seed the draft inputs from the parameterized filters' stored defaults once, for UX.
+  useEffect(() => {
+    if (paramFilters.length === 0) return;
+    setDraft((prev) => {
+      if (Object.keys(prev).length > 0) return prev;
+      const seed: Record<string, string> = {};
+      for (const f of paramFilters) {
+        if (f.value != null) seed[f.fieldCode] = f.value;
+        if (f.operator === "Between" && f.valueTo != null) seed[`${f.fieldCode}:to`] = f.valueTo;
+      }
+      return seed;
+    });
+  }, [paramFilters]);
+
   const doExport = async (f: ExportFormat) => {
     setBusy(f);
-    try { await exportReport(id, f, report?.code || "report"); toast.success("تم بدء التنزيل"); }
+    try { await exportReport(id, f, report?.code || "report", nonBlank(applied)); toast.success("تم بدء التنزيل"); }
     catch { /* toast surfaced in exportReport */ }
     finally { setBusy(null); }
   };
@@ -60,6 +83,13 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
           </button>
         </div>
       </div>
+
+      <ReportParameters
+        filters={paramFilters}
+        values={draft}
+        onChange={(key, value) => setDraft((d) => ({ ...d, [key]: value }))}
+        onRun={() => { setPage(1); setApplied(draft); }}
+      />
 
       {canExport && (
         <div className="flex items-center gap-1.5">
