@@ -111,6 +111,21 @@ public static class DependencyInjection
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.ExcessiveDeductionValidator>();
         services.AddScoped<HR.Application.Engines.Finance.IPayrollValidator, HR.Infrastructure.Engines.Finance.Validators.ZeroGrossValidator>();
 
+        // Email transport: ACS when configured, else a no-op that leaves rows Pending.
+        services.Configure<HR.Application.Engines.Notifications.EmailOptions>(
+            configuration.GetSection(HR.Application.Engines.Notifications.EmailOptions.SectionName));
+        var acsConn = configuration.GetConnectionString("AcsEmail");
+        var senderAddr = configuration[$"{HR.Application.Engines.Notifications.EmailOptions.SectionName}:SenderAddress"];
+        if (!string.IsNullOrWhiteSpace(acsConn) && !string.IsNullOrWhiteSpace(senderAddr))
+            services.AddSingleton<HR.Application.Engines.Notifications.IEmailSender>(sp =>
+                new HR.Infrastructure.Engines.Notifications.AcsEmailSender(
+                    acsConn,
+                    sp.GetRequiredService<Microsoft.Extensions.Options.IOptions<HR.Application.Engines.Notifications.EmailOptions>>(),
+                    sp.GetRequiredService<Microsoft.Extensions.Logging.ILogger<HR.Infrastructure.Engines.Notifications.AcsEmailSender>>()));
+        else
+            services.AddSingleton<HR.Application.Engines.Notifications.IEmailSender,
+                HR.Infrastructure.Engines.Notifications.NullEmailSender>();
+
         return services;
     }
 }
