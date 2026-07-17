@@ -77,6 +77,8 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Notifications.NotificationService>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IDocumentExpiryScanner,
             HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.IEmailQueueDrainer,
+            HR.Modules.Platform.Services.Notifications.EmailQueueDrainer>();
 
         // Completion Effects Engine — generic orchestrator + flags→intents factory + executor
         // registry. Executors are auto-discovered from this assembly (Leave/Expense/Loan executors
