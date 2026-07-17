@@ -105,6 +105,9 @@ public record AddReportScheduleCommand : IRequest<ReportScheduleDto>
     public string? CronExpression { get; init; }
     public ExportFormat ExportFormat { get; init; }
     public string Recipients { get; init; } = null!;
+    public int? TimeOfDayMinutes { get; init; }
+    public int? DayOfWeek { get; init; }
+    public int? DayOfMonth { get; init; }
 }
 
 public record DeleteReportScheduleCommand(Guid Id) : IRequest;
@@ -296,7 +299,19 @@ public class AddReportScheduleCommandHandler : IRequestHandler<AddReportSchedule
     public AddReportScheduleCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
     public async Task<ReportScheduleDto> Handle(AddReportScheduleCommand request, CancellationToken ct)
     {
-        var entity = new ReportSchedule { ReportDefinitionId = request.ReportDefinitionId, Frequency = request.Frequency, CronExpression = request.CronExpression, ExportFormat = request.ExportFormat, Recipients = request.Recipients, IsActive = true };
+        var entity = new ReportSchedule
+        {
+            ReportDefinitionId = request.ReportDefinitionId,
+            Frequency = request.Frequency,
+            CronExpression = request.CronExpression,
+            ExportFormat = request.ExportFormat,
+            Recipients = request.Recipients,
+            TimeOfDayMinutes = request.TimeOfDayMinutes,
+            DayOfWeek = request.DayOfWeek,
+            DayOfMonth = request.DayOfMonth,
+            IsActive = true,
+        };
+        entity.NextRunAt = HR.Modules.Platform.Services.Reports.ScheduleMath.ComputeNextRun(entity, DateTime.UtcNow);
         _context.Set<ReportSchedule>().Add(entity); await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportScheduleDto>(entity);
     }

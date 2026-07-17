@@ -18,14 +18,50 @@ namespace HR.Modules.Platform.Services.Reports;
 /// <summary>Pure scheduling helpers — unit-tested without a DB.</summary>
 public static class ScheduleMath
 {
-    public static DateTime ComputeNextRun(ReportScheduleFrequency freq, DateTime fromUtc) => freq switch
+    private static readonly TimeSpan Riyadh = TimeSpan.FromHours(3); // +03:00, no DST
+
+    /// <summary>Next UTC run for a schedule, honoring time-of-day + day anchor in Asia/Riyadh.</summary>
+    public static DateTime ComputeNextRun(ReportSchedule s, DateTime fromUtc)
     {
-        ReportScheduleFrequency.Daily => fromUtc.AddDays(1),
-        ReportScheduleFrequency.Weekly => fromUtc.AddDays(7),
-        ReportScheduleFrequency.Monthly => fromUtc.AddMonths(1),
-        ReportScheduleFrequency.Quarterly => fromUtc.AddMonths(3),
-        _ => fromUtc.AddDays(1),
-    };
+        var local = fromUtc + Riyadh;                     // treat as Riyadh wall-clock
+        var minutes = Math.Clamp(s.TimeOfDayMinutes ?? 0, 0, 24 * 60 - 1);
+        var timeOfDay = TimeSpan.FromMinutes(minutes);
+
+        DateTime nextLocal = s.Frequency switch
+        {
+            ReportScheduleFrequency.Weekly    => NextWeekly(local, s.DayOfWeek ?? (int)local.DayOfWeek, timeOfDay),
+            ReportScheduleFrequency.Monthly   => NextMonthly(local, s.DayOfMonth ?? 1, timeOfDay, monthStep: 1),
+            ReportScheduleFrequency.Quarterly => NextMonthly(local, s.DayOfMonth ?? 1, timeOfDay, monthStep: 3),
+            _                                 => NextDaily(local, timeOfDay),
+        };
+        return nextLocal - Riyadh;                        // back to UTC
+    }
+
+    private static DateTime NextDaily(DateTime local, TimeSpan tod)
+    {
+        var candidate = local.Date + tod;
+        return candidate > local ? candidate : candidate.AddDays(1);
+    }
+
+    private static DateTime NextWeekly(DateTime local, int targetDow, TimeSpan tod)
+    {
+        int delta = ((targetDow - (int)local.DayOfWeek) % 7 + 7) % 7;
+        var candidate = local.Date.AddDays(delta) + tod;
+        return candidate > local ? candidate : candidate.AddDays(7);
+    }
+
+    private static DateTime NextMonthly(DateTime local, int targetDom, TimeSpan tod, int monthStep)
+    {
+        DateTime Build(int year, int month)
+        {
+            var day = Math.Clamp(targetDom, 1, DateTime.DaysInMonth(year, month));
+            return new DateTime(year, month, day) + tod;
+        }
+        var thisMonth = Build(local.Year, local.Month);
+        if (thisMonth > local) return thisMonth;
+        var rolled = new DateTime(local.Year, local.Month, 1).AddMonths(monthStep);
+        return Build(rolled.Year, rolled.Month);
+    }
 
     public static IReadOnlyList<string> ParseEmails(string recipientsJson)
     {
@@ -110,12 +146,13 @@ public sealed class ReportScheduleRunner : IReportScheduleRunner
                             Category = "ReportSchedule",
                             EntityId = schedule.ReportDefinitionId,
                             Link = link,
+                            AttachmentFileId = stored.Id,
                             Status = EmailQueueStatus.Pending,
                         });
                     }
 
                     schedule.LastRunAt = now;
-                    schedule.NextRunAt = ScheduleMath.ComputeNextRun(schedule.Frequency, now);
+                    schedule.NextRunAt = ScheduleMath.ComputeNextRun(schedule, now);
                     await _db.SaveChangesAsync(ct);
                 }
                 processed++;

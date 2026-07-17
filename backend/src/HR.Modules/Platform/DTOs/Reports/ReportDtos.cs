@@ -92,6 +92,9 @@ public class ReportScheduleDto
     public bool IsActive { get; set; }
     public DateTime? LastRunAt { get; set; }
     public DateTime? NextRunAt { get; set; }
+    public int? TimeOfDayMinutes { get; set; }
+    public int? DayOfWeek { get; set; }
+    public int? DayOfMonth { get; set; }
 }
 
 public class ReportShareDto
