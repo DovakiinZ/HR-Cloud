@@ -86,15 +86,31 @@ public sealed record SemanticMetric(
     IReadOnlyList<string> SuggestedFilterFields);
 
 // Abstract aggregation definition — NOT WidgetQuerySpec. Provider maps it internally.
+// Two shapes: a simple aggregation (Aggregation + AggregationField), OR a formula over
+// named measures (Formula + Measures) for computed metrics — mirrors the engine's Formula
+// widget so computed values like "remaining leave = entitled + carried − used" work with no
+// engine change. Exactly one shape is used per metric.
 public sealed record SemanticMetricDefinition(
     string ObjectCode,
-    string Aggregation,                     // "Count"|"Sum"|"Average"|"Min"|"Max"|"DistinctCount"
+    string Aggregation,                     // "Count"|"Sum"|"Average"|"Min"|"Max"|"DistinctCount"|"Formula"
     string? AggregationField,
     IReadOnlyList<SemanticMetricFilter> Filters,
-    string? GroupByField);
+    string? GroupByField,
+    string? Formula = null,                 // when Aggregation == "Formula", e.g. "m1 + m2 - m3"
+    IReadOnlyList<SemanticMetricMeasure>? Measures = null);
 
+public sealed record SemanticMetricMeasure(
+    string Name,                            // formula variable, e.g. "m1"
+    string Aggregation,                     // "Count"|"Sum"|"Average"|"Min"|"Max"|"DistinctCount"
+    string? AggregationField,
+    IReadOnlyList<SemanticMetricFilter> Filters);
+
+// Operators use FRIENDLY names; the mapper translates to the engine's short codes
+// (Equals→eq, NotEquals→ne, GreaterThan→gt, GreaterThanOrEqual→gte, LessThan→lt,
+//  LessThanOrEqual→lte, Between→between, In→in, Contains→contains). Enum filter values are the
+// integer enum value as a string (e.g. EmployeeStatus.Active → "1", AttendanceStatus.Late → "6").
 public sealed record SemanticMetricFilter(
-    string FieldCode, string Operator,      // "Equals"|"NotEquals"|"GreaterThan"|"LessThan"|"Between"|...
+    string FieldCode, string Operator,      // friendly: "Equals"|"GreaterThanOrEqual"|"Between"|"In"|...
     string? Value,                          // literal value, OR
     string? RelativeValue,                  // relative-date token: "today" | "today+30d" | "startOfMonth" | "today-30d"
     string? ValueTo, string? RelativeValueTo); // upper bound for Between
@@ -153,7 +169,9 @@ public sealed record SemanticSearchHit(string Kind, string Code, string NameAr, 
 
 `MetricSpecMapper` (in `HR.Modules.Platform`, internal to the impl) converts a validated `SemanticMetricDefinition` into the existing `WidgetQuerySpec`:
 - `ObjectCode/Aggregation/AggregationField/GroupByField` pass through 1:1.
-- Each `SemanticMetricFilter` → `WidgetFilterSpec`. `RelativeValue` tokens are resolved to literal dates via a pure `RelativeDate.Resolve(token, nowUtc)` helper (`today`, `today±Nd`, `startOfMonth`, `endOfMonth`). `Between` uses `Value/RelativeValue` + `ValueTo/RelativeValueTo`.
+- **Operators translate** from friendly names to the engine's short codes: `Equals→eq`, `NotEquals→ne`, `GreaterThan→gt`, `GreaterThanOrEqual→gte`, `LessThan→lt`, `LessThanOrEqual→lte`, `Between→between`, `In→in`, `Contains→contains`.
+- Each `SemanticMetricFilter` → `WidgetFilterSpec { Field, Operator, Value }`. `RelativeValue` tokens are resolved to literal dates via a pure `RelativeDate.Resolve(token, nowUtc)` helper (`today`, `today±Nd`, `startOfMonth`, `endOfMonth`). For `Between`, the engine expects the range encoded per its existing convention; the mapper emits it the same way the current builder does (two-value filter).
+- **Formula metrics**: when `Aggregation == "Formula"`, the mapper sets `WidgetQuerySpec.Formula` and maps each `SemanticMetricMeasure` → `WidgetMeasureSpec { Name, Aggregation, AggregationField, Filters }`.
 - The resulting spec is exactly what today's engine executes — proving metrics are one-click executable with zero engine change. (Sub-project #2/#4 use this mapper to materialize widgets; this sub-project ships the mapper + tests, not the builder UI.)
 
 The mapper is the ONLY place that knows about `WidgetQuerySpec`. It never appears in the API contract.
@@ -176,33 +194,35 @@ New `SemanticCatalogController` at `/api/platform/catalog`, read-only, permissio
 
 **Domains (9):** `employees`, `payroll`, `attendance`, `leaves`, `requests`, `loans`, `expenses`, `documents` (live), plus `recruitment` (defined, self-hidden until entities exist).
 
-**Objects:** friendly `SemanticObject` for the primary entity of each live domain (Employee, PayrollPayslip, AttendanceRecord, LeaveBalance, RequestInstance, Loan, Expense/EmployeeExpense, GeneratedDocument), each with curated Ar/En name, description, icon, keywords, field groups, default sort, default filters, and recommended-metric codes. Exact `ObjectCode`/`FieldCode` bindings are verified against the live `IObjectCatalogService` during implementation (Task 1 inventories them); anything absent self-hides.
+**Objects:** friendly `SemanticObject` for the primary entity of each live domain — `Employee`, `PayrollPayslip`, `AttendanceRecord`, `LeaveBalance`, `RequestInstance`, `Loan`, the expense entity, and **`EmployeeDocument`** (personnel documents — it carries `ExpiryDate`; `GeneratedDocument` does not) — each with curated Ar/En name, description, icon, keywords, field groups, default sort, default filters, and recommended-metric codes. Field bindings below are confirmed against the entities; the provider still validates against the live `IObjectCatalogService` and self-hides anything absent.
 
 **Field groups (business-friendly):** `personal_information`, `employment`, `organization`, `payroll`, `attendance`, `leave`, `documents`. Each object assigns its fields to one of these.
 
-**Metrics (17, prioritized for HR comprehension):**
+**Metrics (17, prioritized for HR comprehension).** Object codes are the CLR entity names the catalog exposes; field codes are the confirmed property names. Enum filter values are the integer enum value as a string. **13 resolve now; 4 self-hide** against the current schema and appear in `/health` with a reason — this is the intended demonstration that missing mappings are observable, not silently lost.
 
-| Code | Ar name | Object | Aggregation | Notes |
-|---|---|---|---|---|
-| `total_employees` | إجمالي الموظفين | Employee | Count | |
-| `active_employees` | الموظفون النشطون | Employee | Count | filter Status = Active |
-| `new_employees` | الموظفون الجدد | Employee | Count | HireDate ≥ startOfMonth (relative) |
-| `employees_by_department` | الموظفون حسب الإدارة | Employee | Count | groupBy DepartmentId; default BarChart |
-| `gross_payroll` | إجمالي الرواتب | PayrollPayslip | Sum | GrossSalary field |
-| `net_payroll` | صافي الرواتب | PayrollPayslip | Sum | NetSalary field |
-| `total_gosi` | إجمالي التأمينات | PayrollPayslip | Sum | GOSI field |
-| `total_additions` | إجمالي الإضافات | PayrollPayslip | Sum | additions field |
-| `total_deductions` | إجمالي الخصومات | PayrollPayslip | Sum | deductions field |
-| `late_employees` | الموظفون المتأخرون | AttendanceRecord | Count | Status = Late |
-| `absent_employees` | الموظفون الغائبون | AttendanceRecord | Count | Status = Absent |
-| `overtime_hours` | ساعات العمل الإضافي | AttendanceRecord | Sum | overtime field |
-| `remaining_leave_balance` | رصيد الإجازات المتبقي | LeaveBalance | Sum | remaining field |
-| `pending_requests` | الطلبات المعلقة | RequestInstance | Count | Status = Pending |
-| `pending_approvals` | الموافقات المعلقة | RequestInstance | Count | approval-pending filter |
-| `expiring_documents` | المستندات المنتهية | GeneratedDocument | Count | ExpiryDate Between today..today+30d |
-| `expiring_contracts` | العقود المنتهية | Employee | Count | ContractEndDate Between today..today+30d |
+| Code | Ar name | Object | Definition | Perm | Status |
+|---|---|---|---|---|---|
+| `total_employees` | إجمالي الموظفين | Employee | Count | `Employees.View` | ✅ |
+| `active_employees` | الموظفون النشطون | Employee | Count, `Status Equals "1"` | `Employees.View` | ✅ |
+| `new_employees` | التعيينات هذا الشهر | Employee | Count, `HireDate GreaterThanOrEqual @startOfMonth` | `Employees.View` | ✅ |
+| `employees_by_department` | الموظفون حسب الإدارة | Employee | Count, groupBy `DepartmentId`, BarChart | `Employees.View` | ✅ |
+| `gross_payroll` | إجمالي الاستحقاقات | PayrollPayslip | Sum `GrossEarnings` | `Payroll.View` | ✅ |
+| `net_payroll` | صافي الرواتب | PayrollPayslip | Sum `NetAmount` | `Payroll.View` | ✅ |
+| `total_deductions` | إجمالي الخصومات | PayrollPayslip | Sum `TotalDeductions` | `Payroll.View` | ✅ |
+| `late_employees` | الموظفون المتأخرون | AttendanceRecord | Count, `Status Equals "6"` | `Attendance.View` | ✅ |
+| `absent_employees` | الموظفون الغائبون | AttendanceRecord | Count, `Status Equals "2"` | `Attendance.View` | ✅ |
+| `overtime_minutes` | إجمالي العمل الإضافي (دقائق) | AttendanceRecord | Sum `OvertimeMinutes` | `Attendance.View` | ✅ |
+| `remaining_leave_balance` | رصيد الإجازات المتبقي | LeaveBalance | **Formula** `m1 + m2 - m3` (m1=Sum `EntitledDays`, m2=Sum `CarriedForwardDays`, m3=Sum `UsedDays`) | `Leaves.View` | ✅ |
+| `pending_requests` | الطلبات المعلقة | RequestInstance | Count, `Status Equals "1"` | `Requests.View` | ✅ |
+| `expiring_contracts` | العقود المنتهية قريباً | Employee | Count, `ContractEndDate Between @today..@today+30d` | `Employees.View` | ✅ |
+| `expiring_documents` | المستندات المنتهية قريباً | EmployeeDocument | Count, `ExpiryDate Between @today..@today+30d` | `Employees.View` | ✅ |
+| `total_gosi` | إجمالي التأمينات | PayrollPayslip | Sum `GosiAmount` | `Payroll.View` | ⛔ self-hide (GOSI lives in `ComponentsJson`, no column; health reason: field `GosiAmount` not found) |
+| `total_additions` | إجمالي الإضافات | PayrollPayslip | Sum `TotalAdditions` | `Payroll.View` | ⛔ self-hide (no additions column; only `GrossEarnings`/`TotalDeductions`/`NetAmount`) |
+| `pending_approvals` | الموافقات المعلقة | RequestApproval | Count, `Status Equals "1"` | `Requests.View` | ⛔ self-hide unless `RequestApproval` is catalog-discoverable |
 
-Each metric carries `RequiredPermissions` (e.g. payroll metrics → `Platform.Payroll.View`-class), `DefaultVisualization`, and `SuggestedFilterFields` (Department, Branch, JobTitle, Nationality, EmploymentType, DateRange as applicable). Exact field codes and permission strings are bound in implementation against the live catalog/permission set; metrics that don't resolve self-hide and appear in health.
+Each metric carries `RequiredPermissions`, `DefaultVisualization` (KpiCard for scalars, BarChart for `employees_by_department`), and `SuggestedFilterFields` (from Department/Branch/JobTitle/Nationality/EmploymentType/DateRange, as applicable). The 4 self-hiding metrics are intentionally authored so the health endpoint surfaces them as known follow-ups (GOSI/additions need a future engine capability to read `ComponentsJson`; `pending_approvals` needs `RequestApproval` in the catalog).
+
+> Confirmed field facts (from the entities): `Employee.Status` (EmployeeStatus: Active=1), `Employee.HireDate`, `Employee.DepartmentId`, `Employee.ContractEndDate`, `Employee.JobTitleId` (NOT `PositionId`); `PayrollPayslip.GrossEarnings`/`TotalDeductions`/`NetAmount`; `AttendanceRecord.Status` (AttendanceStatus: Absent=2, Late=6), `AttendanceRecord.OvertimeMinutes`; `LeaveBalance.EntitledDays`/`UsedDays`/`CarriedForwardDays` (`RemainingDays` is a computed C# property, not a column → use the formula); `RequestInstance.Status` (RequestStatus: Pending=1); `EmployeeDocument.ExpiryDate`.
 
 ## Localization
 
@@ -213,7 +233,7 @@ Every domain/object/field/metric carries `NameAr`+`NameEn`+`DescriptionAr`+`Desc
 Pure, DB-free unit tests over the registry + provider (using a fake `IObjectCatalogService` seeded with representative objects/fields):
 
 1. **Registry integrity:** no duplicate domain/object/field/metric codes; every object's `DomainCode` is a defined domain; every field's `GroupCode` is a defined group on its object; every metric's `DomainCode` defined; every `RequiredPermissions` non-empty; every metric's `DefaultVisualization` is a known viz.
-2. **Metric resolvability:** with a catalog containing the expected objects/fields, every metric's `Definition` maps (via `MetricSpecMapper`) to a valid `WidgetQuerySpec` (object exists, aggregation valid, aggregationField present when required, filter fields exist).
+2. **Metric resolvability:** with a fake catalog containing the confirmed objects/fields, each of the 13 resolvable metrics maps (via `MetricSpecMapper`) to a valid `WidgetQuerySpec` (object exists, aggregation valid, aggregationField present when required, filter fields exist; Formula metrics produce `Formula` + mapped `Measures`). The 4 self-hiding metrics (`total_gosi`, `total_additions`, `pending_approvals`, plus any field-absent case) are asserted to be omitted from consumer results and present in `GetHealth().Hidden` with the correct reason.
 3. **Self-hiding:** an object/field/metric whose backing object/field is absent from the fake catalog is omitted from consumer results AND present in `GetHealth().Hidden` with a reason.
 4. **Permission filtering:** a metric requiring `Platform.Payroll.View` is omitted for a context without it, included with it; health still counts it.
 5. **Arabic normalization:** `ArabicText.Normalize` unifies alef/taa-marbuta/tashkeel/tatweel (table-driven cases).
