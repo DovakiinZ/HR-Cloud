@@ -72,6 +72,10 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Reports.IReportScheduleRunner,
             HR.Modules.Platform.Services.Reports.ReportScheduleRunner>();
 
+        // Semantic Catalog — permission-aware, code-defined object/metric catalog
+        services.AddScoped<HR.Application.SemanticCatalog.ISemanticCatalogProvider,
+            HR.Modules.Platform.Services.SemanticCatalog.CodeDefinedSemanticCatalog>();
+
         // Notification engine (bell + email queue) + document-expiry rule scanner
         services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
             HR.Modules.Platform.Services.Notifications.NotificationService>();
