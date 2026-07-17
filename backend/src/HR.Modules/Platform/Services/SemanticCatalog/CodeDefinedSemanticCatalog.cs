@@ -29,7 +29,6 @@ public sealed class CodeDefinedSemanticCatalog : ISemanticCatalogProvider
 
         // ── 1. Validate objects ───────────────────────────────────────────────
         var visibleObjects = new List<SemanticObject>();
-        var visibleObjectCodes = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var obj in CatalogRegistry.Objects)
         {
@@ -59,9 +58,24 @@ public sealed class CodeDefinedSemanticCatalog : ISemanticCatalogProvider
                 }
             }
 
-            var validatedObj = obj with { Fields = filteredFields };
+            // Filter DefaultFilters to those whose FieldCode exists on the live object
+            var filteredDefaultFilters = obj.DefaultFilters
+                .Where(f => liveFieldCodes.Contains(f.FieldCode))
+                .ToList();
+
+            // Null out DefaultSort if its FieldCode no longer exists on the live object
+            var validatedDefaultSort = obj.DefaultSort is not null &&
+                liveFieldCodes.Contains(obj.DefaultSort.FieldCode)
+                    ? obj.DefaultSort
+                    : null;
+
+            var validatedObj = obj with
+            {
+                Fields = filteredFields,
+                DefaultFilters = filteredDefaultFilters,
+                DefaultSort = validatedDefaultSort,
+            };
             visibleObjects.Add(validatedObj);
-            visibleObjectCodes.Add(obj.ObjectCode);
         }
 
         _visibleObjects = visibleObjects;

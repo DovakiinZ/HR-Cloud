@@ -95,4 +95,27 @@ public class CodeDefinedSemanticCatalogTests
         sut.Search(All, "late").Select(h => h.Code).Should().Contain("late_employees");
         sut.Search(All, "تأخير").Select(h => h.Code).Should().Contain("late_employees");
     }
+
+    [Fact]
+    public void DefaultFilters_and_DefaultSort_referencing_missing_fields_are_dropped()
+    {
+        // Employee in the registry has DefaultFilters for DepartmentId + BranchId,
+        // and DefaultSort on HireDate.  Build a fake catalog where BranchId and
+        // HireDate are absent — only DepartmentId (and Status) exist.
+        var cat = new FakeCatalog(
+            Obj("Employee", "Status", "DepartmentId"));   // HireDate + BranchId intentionally absent
+
+        var sut = Sut(cat);
+        var obj = sut.GetObject(All, "Employee");
+
+        obj.Should().NotBeNull("Employee object itself must still be visible");
+
+        // BranchId filter should be dropped; DepartmentId filter must survive
+        obj!.DefaultFilters.Select(f => f.FieldCode)
+            .Should().NotContain("BranchId")
+            .And.Contain("DepartmentId");
+
+        // HireDate is missing → DefaultSort must be nulled
+        obj.DefaultSort.Should().BeNull("HireDate is absent from the live catalog object");
+    }
 }
