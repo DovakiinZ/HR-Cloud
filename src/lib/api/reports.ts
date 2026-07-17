@@ -587,6 +587,7 @@ export async function exportReport(
 export interface ReportSchedule {
   id: string; frequency: string; cronExpression?: string | null;
   exportFormat: string; recipients: string; isActive: boolean;
+  timeOfDayMinutes?: number | null; dayOfWeek?: number | null; dayOfMonth?: number | null;
   lastRunAt?: string | null; nextRunAt?: string | null;
 }
 
