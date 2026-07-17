@@ -21,4 +21,6 @@ public class EmailNotificationQueue : TenantEntity
     public DateTime? SentAt { get; set; }
     public string? Error { get; set; }
     public int Attempts { get; set; }
+    /// <summary>Optional StoredFile.Id to attach when delivering (e.g. a scheduled report file). FK-less, like other Guid refs.</summary>
+    public Guid? AttachmentFileId { get; set; }
 }
