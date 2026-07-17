@@ -9,6 +9,8 @@ public sealed class NullEmailSender : IEmailSender
     private readonly ILogger<NullEmailSender> _logger;
     public NullEmailSender(ILogger<NullEmailSender> logger) => _logger = logger;
 
+    public bool CanSend => false;
+
     public Task<EmailSendResult> SendAsync(OutboundEmail email, CancellationToken ct)
     {
         _logger.LogWarning("Email transport not configured; leaving {To} pending.", email.To);

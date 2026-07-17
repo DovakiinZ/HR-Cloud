@@ -39,4 +39,14 @@ public class EmailComposerTests
         e.Attachment.Should().BeNull();
         e.Body.Should().Contain("/api/files/123");
     }
+
+    [Fact]
+    public void Compose_oversized_attachment_with_null_link_drops_attachment_and_leaves_body_unchanged()
+    {
+        var big = new byte[20];
+        // Link is null — the EmailComposer must not append anything to the body.
+        var e = EmailComposer.Compose(Row(link: null), big, "r.pdf", "application/pdf", 10);
+        e.Attachment.Should().BeNull();
+        e.Body.Should().Be("Body text");
+    }
 }

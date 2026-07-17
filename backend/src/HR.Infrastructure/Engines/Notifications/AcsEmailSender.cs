@@ -23,6 +23,8 @@ public sealed class AcsEmailSender : AppIEmailSender
         _logger = logger;
     }
 
+    public bool CanSend => true;
+
     public async Task<AppEmailSendResult> SendAsync(AppOutboundEmail email, CancellationToken ct)
     {
         try

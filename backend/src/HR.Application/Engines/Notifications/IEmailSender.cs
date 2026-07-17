@@ -15,6 +15,10 @@ public sealed record EmailSendResult(bool Sent, string? Error)
 /// <summary>Sends one email. Implementations MUST NOT throw for a send failure; map it to EmailSendResult.Fail.</summary>
 public interface IEmailSender
 {
+    /// <summary>True when this sender has a real transport configured (e.g. ACS connection string present).
+    /// The drainer checks this before querying the DB — when false, all rows are left Pending.</summary>
+    bool CanSend { get; }
+
     Task<EmailSendResult> SendAsync(OutboundEmail email, CancellationToken ct);
 }
 

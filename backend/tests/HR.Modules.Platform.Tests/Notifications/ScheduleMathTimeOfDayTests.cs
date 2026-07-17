@@ -52,4 +52,15 @@ public class ScheduleMathTimeOfDayTests
         var next = ScheduleMath.ComputeNextRun(S(ReportScheduleFrequency.Quarterly, tod: 480, dom: 5), From);
         next.Should().Be(new DateTime(2026, 10, 5, 5, 0, 0, DateTimeKind.Utc));
     }
+
+    [Fact]
+    public void Weekly_same_weekday_but_earlier_time_rolls_forward_7_days()
+    {
+        // From = 2026-07-16 05:00 UTC → Riyadh Thursday 08:00.
+        // DayOfWeek = 4 (Thursday) with TimeOfDayMinutes = 420 (07:00 Riyadh, EARLIER than 08:00).
+        // First candidate = same Thursday 07:00 Riyadh = 04:00 UTC, which is NOT > from (05:00 UTC already past).
+        // Therefore the schedule must add 7 days → next Thursday 2026-07-23 07:00 Riyadh = 04:00 UTC.
+        var next = ScheduleMath.ComputeNextRun(S(ReportScheduleFrequency.Weekly, tod: 420, dow: (int)DayOfWeek.Thursday), From);
+        next.Should().Be(new DateTime(2026, 7, 23, 4, 0, 0, DateTimeKind.Utc));
+    }
 }

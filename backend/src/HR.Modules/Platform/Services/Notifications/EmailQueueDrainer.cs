@@ -25,6 +25,9 @@ public sealed class EmailQueueDrainer : IEmailQueueDrainer
 
     public async Task<int> DrainAsync(CancellationToken ct)
     {
+        // No transport configured — leave every Pending row untouched until a sender is provisioned.
+        if (!_sender.CanSend) return 0;
+
         // EmailQueue is a TenantEntity (global filter) — IgnoreQueryFilters to drain every tenant.
         var batch = await _db.EmailQueue.IgnoreQueryFilters()
             .Where(e => e.Status == EmailQueueStatus.Pending && e.Attempts < MaxAttempts)
