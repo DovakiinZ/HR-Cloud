@@ -55,19 +55,6 @@ public class EmailQueueDrainerTests
         }
     }
 
-    // A sender that throws synchronously (covers the defensive catch in the drainer).
-    private sealed class ThrowingSender : IEmailSender
-    {
-        public bool CanSend => true;
-        public int CallCount { get; private set; }
-
-        public Task<EmailSendResult> SendAsync(OutboundEmail email, CancellationToken ct)
-        {
-            CallCount++;
-            throw new InvalidOperationException("transport blew up");
-        }
-    }
-
     // ── helper to seed a minimal Pending row ─────────────────────────────────
     private static EmailNotificationQueue PendingRow(int attempts = 0, Guid? attachmentFileId = null) => new()
     {
