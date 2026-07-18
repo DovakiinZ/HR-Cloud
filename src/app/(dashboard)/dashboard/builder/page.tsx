@@ -12,6 +12,7 @@ import {
 import { DASHBOARD_SCOPE, DashboardDefinition, WidgetQuerySpec } from "@/types/dashboard";
 import { ApiError } from "@/lib/api-client";
 import { WidgetBuilder } from "@/components/dashboard/widget-builder";
+import { BusinessWidgetBuilder } from "@/components/dashboard/business-widget-builder";
 
 export default function BuilderPage() {
   const router = useRouter();
@@ -23,6 +24,7 @@ export default function BuilderPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
 
   const load = useCallback(async (preferId?: string) => {
     setLoading(true);
@@ -129,7 +131,16 @@ export default function BuilderPage() {
           </div>
 
           <div className="border border-border bg-card">
-            <WidgetBuilder onSave={onSave} onCancel={() => router.push("/dashboard")} saving={saving} />
+            {advanced ? (
+              <WidgetBuilder onSave={onSave} onCancel={() => setAdvanced(false)} saving={saving} />
+            ) : (
+              <BusinessWidgetBuilder
+                dashboardId={targetId}
+                onSaved={() => router.push("/dashboard")}
+                onCancel={() => router.push("/dashboard")}
+                onAdvanced={() => setAdvanced(true)}
+              />
+            )}
           </div>
         </>
       )}

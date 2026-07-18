@@ -14,6 +14,7 @@ import { ApiError } from "@/lib/api-client";
 import { DashboardGrid } from "@/components/dashboard/dashboard-grid";
 import { DashboardFilterBar } from "@/components/dashboard/filter-bar";
 import { WidgetBuilder } from "@/components/dashboard/widget-builder";
+import { BusinessWidgetBuilder } from "@/components/dashboard/business-widget-builder";
 import { DashboardShareDialog } from "@/components/dashboard/share-dialog";
 
 const REFRESH_OPTIONS = [
@@ -36,6 +37,7 @@ export default function DashboardPage() {
   const [filters, setFilters] = useState<WidgetFilterSpec[]>([]);
   const [editMode, setEditMode] = useState(false);
   const [builderOpen, setBuilderOpen] = useState(false);
+  const [advanced, setAdvanced] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -237,9 +239,18 @@ export default function DashboardPage() {
       {/* Builder modal */}
       {builderOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/60" onClick={() => !saving && setBuilderOpen(false)} />
+          <div className="absolute inset-0 bg-black/60" onClick={() => { if (!saving) { setBuilderOpen(false); setAdvanced(false); } }} />
           <div className="relative z-10 w-full max-w-4xl border border-border bg-card shadow-xl">
-            <WidgetBuilder onSave={onSaveWidget} onCancel={() => setBuilderOpen(false)} saving={saving} />
+            {advanced ? (
+              <WidgetBuilder onSave={onSaveWidget} onCancel={() => setAdvanced(false)} saving={saving} />
+            ) : (
+              <BusinessWidgetBuilder
+                dashboardId={activeId}
+                onSaved={async () => { setBuilderOpen(false); setAdvanced(false); await loadDetail(activeId); }}
+                onCancel={() => { setBuilderOpen(false); setAdvanced(false); }}
+                onAdvanced={() => setAdvanced(true)}
+              />
+            )}
           </div>
         </div>
       )}
