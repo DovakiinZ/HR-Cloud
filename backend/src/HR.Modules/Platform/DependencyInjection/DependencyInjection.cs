@@ -65,6 +65,8 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.WidgetData.WidgetSuggestionService>();
         services.AddScoped<HR.Modules.Platform.Services.WidgetData.IWidgetExportService,
             HR.Modules.Platform.Services.WidgetData.WidgetExportService>();
+        services.AddScoped<HR.Modules.Platform.Services.WidgetData.IMetricWidgetService,
+            HR.Modules.Platform.Services.WidgetData.MetricWidgetService>();
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
 

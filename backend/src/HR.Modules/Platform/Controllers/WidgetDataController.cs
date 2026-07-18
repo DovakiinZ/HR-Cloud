@@ -1,5 +1,6 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
+using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Application.Engines.Finance.Export;
 using HR.Modules.Platform.Services.WidgetData;
@@ -19,9 +20,13 @@ public class WidgetDataController : BaseApiController
     private readonly IWidgetDataService _data;
     private readonly IWidgetSuggestionService _suggest;
     private readonly IWidgetExportService _export;
-    public WidgetDataController(IWidgetDataService data, IWidgetSuggestionService suggest, IWidgetExportService export)
+    private readonly IMetricWidgetService _metricWidgets;
+    private readonly ICurrentUserService _user;
+    public WidgetDataController(IWidgetDataService data, IWidgetSuggestionService suggest, IWidgetExportService export,
+        IMetricWidgetService metricWidgets, ICurrentUserService user)
     {
         _data = data; _suggest = suggest; _export = export;
+        _metricWidgets = metricWidgets; _user = user;
     }
 
     /// <summary>AI builder — turn a natural-language phrase into a ready widget spec.</summary>
@@ -35,6 +40,14 @@ public class WidgetDataController : BaseApiController
     [RequirePermission("Platform.Dashboards.View")]
     public async Task<ActionResult<ApiResponse<WidgetDataResult>>> Preview([FromBody] PreviewRequest req, CancellationToken ct)
         => OkResponse(await _data.ExecuteAsync(req.Spec, req.DashboardFilters, ct));
+
+    /// <summary>Metric-driven preview — resolve a semantic metric into a live WidgetDataResult.</summary>
+    [HttpPost("preview-metric")]
+    [RequirePermission("Platform.Dashboards.View")]
+    public async Task<ActionResult<ApiResponse<WidgetDataResult>>> PreviewMetric([FromBody] PreviewMetricRequest req, CancellationToken ct)
+        => OkResponse(await _metricWidgets.PreviewAsync(
+            new HR.Application.SemanticCatalog.CatalogQueryContext(_user.Permissions),
+            req.MetricCode, req.Filters ?? new(), req.Visualization, req.DateGranularity, ct));
 
     /// <summary>Execute a saved widget by id (reads its stored configuration).</summary>
     [HttpPost("{widgetId:guid}/execute")]
@@ -84,3 +97,5 @@ public sealed class DrilldownRequest
     public int? Page { get; set; }
     public int? PageSize { get; set; }
 }
+
+public sealed record PreviewMetricRequest(string MetricCode, List<WidgetFilterSpec>? Filters, string? Visualization, string? DateGranularity);

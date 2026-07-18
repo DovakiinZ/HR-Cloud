@@ -1,10 +1,12 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
+using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Modules.Platform.Commands.Dashboards;
 using HR.Modules.Platform.DTOs.Dashboards;
 using HR.Modules.Platform.Queries.Dashboards;
 using HR.Modules.Platform.Services.Dashboards;
+using HR.Modules.Platform.Services.WidgetData;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
@@ -15,6 +17,13 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/dashboards")]
 public class DashboardsController : BaseApiController
 {
+    private readonly IMetricWidgetService _metricWidgets;
+    private readonly ICurrentUserService _user;
+    public DashboardsController(IMetricWidgetService metricWidgets, ICurrentUserService user)
+    {
+        _metricWidgets = metricWidgets; _user = user;
+    }
+
     /// <summary>Idempotently provision the ready-made Executive dashboard for this tenant.</summary>
     [HttpPost("seed-defaults")]
     [RequirePermission("Platform.Dashboards.Create")]
@@ -100,6 +109,13 @@ public class DashboardsController : BaseApiController
     public async Task<ActionResult<ApiResponse<DashboardWidgetDto>>> AddWidget(Guid id, [FromBody] AddDashboardWidgetCommand command, CancellationToken ct)
     { var result = await Mediator.Send(command with { DashboardDefinitionId = id }, ct); return CreatedResponse(result); }
 
+    [HttpPost("{id:guid}/widgets/from-metric")]
+    [RequirePermission("Platform.Dashboards.Edit")]
+    public async Task<ActionResult<ApiResponse<DashboardWidgetDto>>> CreateWidgetFromMetric(Guid id, [FromBody] CreateWidgetFromMetricRequest req, CancellationToken ct)
+        => OkResponse(await _metricWidgets.CreateWidgetAsync(id,
+            new HR.Application.SemanticCatalog.CatalogQueryContext(_user.Permissions),
+            req.MetricCode, req.Filters ?? new(), req.Visualization, req.DateGranularity, req.TitleAr, req.TitleEn, req.Layout, ct));
+
     [HttpPut("widgets/{widgetId:guid}")]
     [RequirePermission("Platform.Dashboards.Edit")]
     public async Task<ActionResult<ApiResponse<DashboardWidgetDto>>> UpdateWidget(Guid widgetId, [FromBody] UpdateDashboardWidgetCommand command, CancellationToken ct)
@@ -183,3 +199,6 @@ public class DashboardsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteDataSource(Guid dataSourceId, CancellationToken ct)
     { await Mediator.Send(new DeleteWidgetDataSourceCommand(dataSourceId), ct); return OkResponse("Data source deleted"); }
 }
+
+public sealed record CreateWidgetFromMetricRequest(string MetricCode, List<WidgetFilterSpec>? Filters,
+    string? Visualization, string? DateGranularity, string TitleAr, string TitleEn, WidgetLayoutInput? Layout);
