@@ -71,6 +71,17 @@ public class WidgetDataController : BaseApiController
         var file = await _export.ExportAsync(widgetId, fmt, ct);
         return File(file.Content, file.ContentType, file.FileName);
     }
+
+    /// <summary>Export the drill-down detail rows behind a widget value as Excel/PDF/CSV.</summary>
+    [HttpPost("drilldown/export")]
+    [RequirePermission("Platform.Dashboards.View")]
+    public async Task<IActionResult> DrilldownExport([FromBody] DrilldownExportRequest req, [FromQuery] string format = "excel", CancellationToken ct = default)
+    {
+        if (!Enum.TryParse<ExportFormat>(format, ignoreCase: true, out var fmt))
+            return BadRequest(ApiResponse.Fail($"Unknown export format '{format}'. Use excel, csv, or pdf."));
+        var file = await _export.ExportRowsAsync(req.Spec, req.SegmentKey, req.DashboardFilters, fmt, req.Title ?? "details", ct);
+        return File(file.Content, file.ContentType, file.FileName);
+    }
 }
 
 public sealed class AiSuggestRequest
@@ -99,3 +110,5 @@ public sealed class DrilldownRequest
 }
 
 public sealed record PreviewMetricRequest(string MetricCode, List<WidgetFilterSpec>? Filters, string? Visualization, string? DateGranularity);
+
+public sealed record DrilldownExportRequest(WidgetQuerySpec Spec, string? SegmentKey, List<WidgetFilterSpec>? DashboardFilters, string? Title);
