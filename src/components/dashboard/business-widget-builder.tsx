@@ -583,6 +583,15 @@ export function BusinessWidgetBuilder({
               {chosenMetric.descriptionAr && <p className="mt-0.5">{chosenMetric.descriptionAr}</p>}
             </div>
           )}
+          {/* Working-but-empty hint: the metric ran successfully but matched no records yet */}
+          {chosenMetric && previewResult && !previewLoading && !previewError &&
+            ((previewResult.kind === "scalar" && !previewResult.value) ||
+              (previewResult.kind === "series" && (previewResult.series?.length ?? 0) === 0) ||
+              (previewResult.kind === "table" && (previewResult.rows?.length ?? 0) === 0)) && (
+            <p className="mt-2 text-xs text-amber-600/90">
+              لا توجد بيانات لهذا المؤشر بعد — المؤشر يعمل بشكل صحيح، لكن لا توجد سجلات مطابقة في قاعدة البيانات حتى الآن.
+            </p>
+          )}
         </div>
       </div>
 
