@@ -292,4 +292,17 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.Delete")]
     public ActionResult<ApiResponse<ReportRegistryHealth>> GetRegistryHealth()
         => OkResponse(_registry.GetHealth());
+
+    // Simplified builder — create a runnable report from trusted registry field keys.
+    // The server discovers the primary object + join chain (no joins/codes/SQL from the client).
+    [HttpPost("quick")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<QuickReportResult>>> CreateQuick([FromBody] CreateQuickReportCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command, ct); return CreatedResponse(result); }
+
+    // Seed one ready-to-run standard report per subject the caller can see. Idempotent per tenant.
+    [HttpPost("seed-system")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<SeedSystemReportsResult>>> SeedSystemReports(CancellationToken ct)
+    { var result = await Mediator.Send(new SeedSystemReportsCommand(), ct); return OkResponse(result); }
 }
