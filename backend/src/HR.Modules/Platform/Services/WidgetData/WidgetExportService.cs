@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using HR.Application.Common.Exceptions;
 using HR.Application.Engines.Finance.Export;
 using HR.Infrastructure.Persistence;
+using HR.Modules.Platform.Services.Reports;
 using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Platform.Services.WidgetData;
@@ -29,7 +30,8 @@ public sealed class WidgetExportService : IWidgetExportService
 
         var result = await _data.ExecuteWidgetAsync(widgetId, null, ct);
         var dataset = WidgetResultFlattener.Flatten(result, name);
-        var bytes = writer.Write(dataset);
+        var branding = await ExportBrandingLoader.LoadAsync(_db, ct);
+        var bytes = writer.Write(dataset, new ExportWriteOptions(Branding: branding));
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
         var safe = string.IsNullOrWhiteSpace(name) ? "widget" : System.Text.RegularExpressions.Regex.Replace(name, "[\\\\/:*?\"<>|]+", "_");
@@ -84,7 +86,8 @@ public sealed class WidgetExportService : IWidgetExportService
 
         var name = string.IsNullOrWhiteSpace(title) ? "details" : title;
         var dataset = WidgetResultFlattener.Flatten(combined, name);
-        var bytes = writer.Write(dataset);
+        var branding = await ExportBrandingLoader.LoadAsync(_db, ct);
+        var bytes = writer.Write(dataset, new ExportWriteOptions(Branding: branding));
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
         var safe = System.Text.RegularExpressions.Regex.Replace(name, "[\\\\/:*?\"<>|]+", "_");

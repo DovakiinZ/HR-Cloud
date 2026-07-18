@@ -36,7 +36,8 @@ public sealed class ReportExportService : IReportExportService
 
         var result = await _exec.RunForExportAsync(reportId, parameters, ct);
         var dataset = ReportResultFlattener.Flatten(result, meta.NameEn);
-        var bytes = writer.Write(dataset);
+        var branding = await ExportBrandingLoader.LoadAsync(_db, ct);
+        var bytes = writer.Write(dataset, new ExportWriteOptions(Branding: branding));
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
         var safe = string.IsNullOrWhiteSpace(meta.Code) ? "report" : meta.Code;
