@@ -56,6 +56,16 @@ public class ObjectRegistryController : BaseApiController
         return OkResponse("Object definition deleted");
     }
 
+    /// <summary>
+    /// Idempotent seed — registers the five main HR entities (Employee, AttendanceRecord,
+    /// PayrollPayslip, LeaveBalance, RequestInstance) as ObjectDefinition rows so the
+    /// report engine and field registry can target them.  Safe to call multiple times.
+    /// </summary>
+    [HttpPost("seed-reportable")]
+    [RequirePermission("Platform.Objects.Create")]
+    public async Task<ActionResult<ApiResponse<int>>> SeedReportable(CancellationToken ct)
+        => OkResponse(await Mediator.Send(new RegisterReportableObjectsCommand(), ct));
+
     // Field endpoints
     [HttpPost("{id:guid}/fields")]
     [RequirePermission("Platform.Objects.Edit")]
