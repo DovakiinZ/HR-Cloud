@@ -140,6 +140,17 @@ export const previewWidgetData = (spec: WidgetQuerySpec, dashboardFilters?: Widg
     body: { spec, dashboardFilters },
   });
 
+export const previewMetric = (
+  metricCode: string, filters: WidgetFilterSpec[], visualization?: string, dateGranularity?: string,
+) => apiFetch<WidgetDataResult>("/api/platform/dashboards/widget-data/preview-metric", {
+  method: "POST", body: { metricCode, filters, visualization, dateGranularity },
+});
+
+export const addWidgetFromMetric = (
+  dashboardId: string,
+  body: { metricCode: string; filters: WidgetFilterSpec[]; visualization?: string; dateGranularity?: string; titleAr: string; titleEn: string; layout?: { column: number; row: number; width: number; height: number } },
+) => apiFetch<DashboardWidget>(`/api/platform/dashboards/${dashboardId}/widgets/from-metric`, { method: "POST", body });
+
 export const executeWidget = (widgetId: string, dashboardFilters?: WidgetFilterSpec[]) =>
   apiFetch<WidgetDataResult>(`/api/platform/dashboards/widget-data/${widgetId}/execute`, {
     method: "POST",
