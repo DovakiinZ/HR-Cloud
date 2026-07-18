@@ -133,21 +133,25 @@ export function BusinessWidgetBuilder({
   // ── Load metrics when domain changes ──────────────────────────────────────
   useEffect(() => {
     if (!domain) return;
+    let active = true;
     setLoadingMetrics(true);
     setMetrics([]);
     setMetricCode("");
     setChosenMetric(null);
     getMetrics(domain)
-      .then(setMetrics)
-      .catch(() => setMetrics([]))
-      .finally(() => setLoadingMetrics(false));
+      .then((data) => { if (active) setMetrics(data); })
+      .catch(() => { if (active) setMetrics([]); })
+      .finally(() => { if (active) setLoadingMetrics(false); });
+    return () => { active = false; };
   }, [domain]);
 
   // ── Load domain fields when domain changes (for filter step) ─────────────
   useEffect(() => {
     if (!domain) return;
+    let active = true;
     getCatalogObjects(domain)
       .then((objs) => {
+        if (!active) return;
         // Collect all unique fields across domain objects
         const fieldMap = new Map<string, SemanticField>();
         for (const obj of objs) {
@@ -157,10 +161,13 @@ export function BusinessWidgetBuilder({
         }
         setDomainFields([...fieldMap.values()]);
       })
-      .catch(() => setDomainFields([]));
+      .catch(() => { if (active) setDomainFields([]); });
+    return () => { active = false; };
   }, [domain]);
 
   // ── Debounced preview ─────────────────────────────────────────────────────
+  const previewActiveRef = useRef(false);
+
   const triggerPreview = useCallback(
     (code: string, currentFilters: WidgetFilterSpec[], vis: string) => {
       if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
@@ -170,16 +177,19 @@ export function BusinessWidgetBuilder({
         return;
       }
       previewTimerRef.current = setTimeout(async () => {
+        previewActiveRef.current = true;
         setPreviewLoading(true);
         setPreviewError(null);
         try {
           const result = await previewMetric(code, currentFilters, vis || undefined);
-          setPreviewResult(result);
+          if (previewActiveRef.current) setPreviewResult(result);
         } catch (e) {
-          setPreviewError(e instanceof Error ? e.message : "تعذر جلب المعاينة");
-          setPreviewResult(null);
+          if (previewActiveRef.current) {
+            setPreviewError(e instanceof Error ? e.message : "تعذر جلب المعاينة");
+            setPreviewResult(null);
+          }
         } finally {
-          setPreviewLoading(false);
+          if (previewActiveRef.current) setPreviewLoading(false);
         }
       }, 400);
     },
@@ -188,16 +198,21 @@ export function BusinessWidgetBuilder({
 
   // Trigger preview when metricCode / filters / visualization change
   useEffect(() => {
+    previewActiveRef.current = true;
     if (metricCode) {
       triggerPreview(metricCode, filters, visualization);
     } else {
       setPreviewResult(null);
       setPreviewError(null);
     }
+    return () => { previewActiveRef.current = false; };
   }, [metricCode, filters, visualization, triggerPreview]);
 
   // Clear timer on unmount
-  useEffect(() => () => { if (previewTimerRef.current) clearTimeout(previewTimerRef.current); }, []);
+  useEffect(() => () => {
+    previewActiveRef.current = false;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+  }, []);
 
   // ── Metric selection — maybe pre-fill visualization ───────────────────────
   const selectMetric = (m: SemanticMetric) => {
@@ -510,8 +525,8 @@ export function BusinessWidgetBuilder({
                 <div className="border border-primary/30 bg-primary/5 p-3 text-xs">
                   <p className="mb-1 font-bold text-primary">فلاتر نشطة:</p>
                   <ul className="space-y-0.5">
-                    {filters.map((fl, i) => (
-                      <li key={i} className="text-muted-foreground" dir="ltr">
+                    {filters.map((fl) => (
+                      <li key={`${fl.field}-${fl.operator}`} className="text-muted-foreground" dir="ltr">
                         {fl.field} {fl.operator} &quot;{fl.value}&quot;
                       </li>
                     ))}
