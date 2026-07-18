@@ -19,7 +19,10 @@ public sealed class PdfExportWriter : IExportWriter
             var dir = Path.Combine(AppContext.BaseDirectory, "Fonts");
             if (Directory.Exists(dir))
                 foreach (var f in Directory.GetFiles(dir, "*.ttf"))
-                    QuestPDF.Drawing.FontManager.RegisterFont(File.OpenRead(f));
+                {
+                    using var fs = File.OpenRead(f);
+                    QuestPDF.Drawing.FontManager.RegisterFont(fs);
+                }
         }
         catch { /* fall back to system fonts */ }
     }
