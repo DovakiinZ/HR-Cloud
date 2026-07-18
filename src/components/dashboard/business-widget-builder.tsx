@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import React from "react";
 import {
   BarChart2,
@@ -166,53 +166,37 @@ export function BusinessWidgetBuilder({
   }, [domain]);
 
   // ── Debounced preview ─────────────────────────────────────────────────────
-  const previewActiveRef = useRef(false);
-
-  const triggerPreview = useCallback(
-    (code: string, currentFilters: WidgetFilterSpec[], vis: string) => {
-      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-      if (!code) {
-        setPreviewResult(null);
-        setPreviewError(null);
-        return;
-      }
-      previewTimerRef.current = setTimeout(async () => {
-        previewActiveRef.current = true;
-        setPreviewLoading(true);
-        setPreviewError(null);
-        try {
-          const result = await previewMetric(code, currentFilters, vis || undefined);
-          if (previewActiveRef.current) setPreviewResult(result);
-        } catch (e) {
-          if (previewActiveRef.current) {
-            setPreviewError(e instanceof Error ? e.message : "تعذر جلب المعاينة");
-            setPreviewResult(null);
-          }
-        } finally {
-          if (previewActiveRef.current) setPreviewLoading(false);
-        }
-      }, 400);
-    },
-    [],
-  );
 
   // Trigger preview when metricCode / filters / visualization change
   useEffect(() => {
-    previewActiveRef.current = true;
-    if (metricCode) {
-      triggerPreview(metricCode, filters, visualization);
-    } else {
+    let active = true;
+    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    if (!metricCode) {
       setPreviewResult(null);
       setPreviewError(null);
+      return () => { active = false; };
     }
-    return () => { previewActiveRef.current = false; };
-  }, [metricCode, filters, visualization, triggerPreview]);
-
-  // Clear timer on unmount
-  useEffect(() => () => {
-    previewActiveRef.current = false;
-    if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
-  }, []);
+    previewTimerRef.current = setTimeout(async () => {
+      if (!active) return;
+      setPreviewLoading(true);
+      setPreviewError(null);
+      try {
+        const result = await previewMetric(metricCode, filters, visualization || undefined);
+        if (active) setPreviewResult(result);
+      } catch (e) {
+        if (active) {
+          setPreviewError(e instanceof Error ? e.message : "تعذر جلب المعاينة");
+          setPreviewResult(null);
+        }
+      } finally {
+        if (active) setPreviewLoading(false);
+      }
+    }, 400);
+    return () => {
+      active = false;
+      if (previewTimerRef.current) clearTimeout(previewTimerRef.current);
+    };
+  }, [metricCode, filters, visualization]);
 
   // ── Metric selection — maybe pre-fill visualization ───────────────────────
   const selectMetric = (m: SemanticMetric) => {
