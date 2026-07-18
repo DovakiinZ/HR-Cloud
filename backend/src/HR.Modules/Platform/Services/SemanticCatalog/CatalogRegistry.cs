@@ -57,14 +57,18 @@ public static class CatalogRegistry
             RecommendedWidgetCodes: Array.Empty<string>(),
             Fields: new[]
             {
-                new SemanticField("Employee","FirstNameAr",       "الاسم الأول",         "First Name",       "","","personal_information",null,new[]{"name","اسم"},           Dimension, true),
-                new SemanticField("Employee","Status",            "الحالة",              "Status",           "حالة الموظف","Employment status","employment",null,new[]{"status","حالة"},      Dimension, true),
-                new SemanticField("Employee","HireDate",          "تاريخ التعيين",        "Hire Date",        "","","employment",null,new[]{"hire","تعيين"},        Dimension, true),
-                new SemanticField("Employee","DepartmentId",      "الإدارة",             "Department",       "","","organization",null,new[]{"department","ادارة"},  Dimension, true),
-                new SemanticField("Employee","BranchId",          "الفرع",               "Branch",           "","","organization",null,new[]{"branch","فرع"},        Dimension, true),
-                new SemanticField("Employee","JobTitleId",        "المسمى الوظيفي",      "Job Title",        "","","employment",null,new[]{"job","title","وظيفة"},  Dimension, true),
-                new SemanticField("Employee","ContractEndDate",   "نهاية العقد",          "Contract End",     "","","employment",null,new[]{"contract","عقد"},       Dimension, true),
-                new SemanticField("Employee","BasicSalary",       "الراتب الأساسي",       "Basic Salary",     "","","payroll",null,new[]{"salary","راتب"},          Measure,   true),
+                new SemanticField("Employee","EmployeeNumber",    "الرقم الوظيفي",       "Employee Number",  "","","employment",null,new[]{"number","رقم","employee"},    Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","FirstNameAr",       "الاسم الأول",         "First Name",       "","","personal_information",null,new[]{"name","اسم"},           Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","LastNameAr",        "اسم العائلة",         "Last Name",        "","","personal_information",null,new[]{"last","name","عائلة"},   Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","Status",            "الحالة",              "Status",           "حالة الموظف","Employment status","employment",null,new[]{"status","حالة"},      Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","HireDate",          "تاريخ التعيين",        "Hire Date",        "","","employment",null,new[]{"hire","تعيين"},        Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","ContractEndDate",   "نهاية العقد",          "Contract End",     "","","employment",null,new[]{"contract","عقد"},       Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","JobTitleId",        "المسمى الوظيفي",      "Job Title",        "","","employment",null,new[]{"job","title","وظيفة"},  Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","DepartmentId",      "القسم",               "Department",       "","","organization",null,new[]{"department","قسم"},   Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","BranchId",          "الفرع",               "Branch",           "","","organization",null,new[]{"branch","فرع"},        Dimension, true,  ReportEnabled: true),
+                new SemanticField("Employee","ManagerId",         "المدير المباشر",       "Direct Manager",   "","","organization",null,new[]{"manager","مدير"},      Dimension, false, ReportEnabled: true),
+                new SemanticField("Employee","NationalityId",     "الجنسية",             "Nationality",      "","","personal_information",null,new[]{"nationality","جنسية"}, Dimension, false, ReportEnabled: true),
+                new SemanticField("Employee","BasicSalary",       "الراتب الأساسي",       "Basic Salary",     "","","payroll",null,new[]{"salary","راتب"},          Measure,   true,  ReportEnabled: true),
             }),
 
         // ── PayrollPayslip ────────────────────────────────────────────────────
@@ -91,11 +95,12 @@ public static class CatalogRegistry
             RecommendedWidgetCodes: Array.Empty<string>(),
             Fields: new[]
             {
-                new SemanticField("PayrollPayslip","GrossEarnings",  "الاستحقاقات الإجمالية","Gross Earnings",    "","","payroll",null,new[]{"gross","earnings","استحقاق"},    Measure,   true),
-                new SemanticField("PayrollPayslip","NetAmount",      "صافي الراتب",           "Net Amount",        "","","payroll",null,new[]{"net","amount","صافي"},            Measure,   true),
-                new SemanticField("PayrollPayslip","TotalDeductions","إجمالي الخصومات",       "Total Deductions",  "","","payroll",null,new[]{"deductions","خصومات"},            Measure,   true),
-                new SemanticField("PayrollPayslip","EmployeeName",   "اسم الموظف",            "Employee Name",     "","","employment",null,new[]{"employee","name","موظف"},      Dimension, true),
-                new SemanticField("PayrollPayslip","Currency",       "العملة",                "Currency",          "","","payroll",null,new[]{"currency","عملة"},                Dimension, true),
+                new SemanticField("PayrollPayslip","EmployeeName",   "اسم الموظف",            "Employee Name",     "","","employment",null,new[]{"employee","name","موظف"},      Dimension, true,  ReportEnabled: true),
+                new SemanticField("PayrollPayslip","EmployeeNumber", "الرقم الوظيفي",         "Employee Number",   "","","employment",null,new[]{"number","رقم","employee"},    Dimension, true,  ReportEnabled: true),
+                new SemanticField("PayrollPayslip","GrossEarnings",  "إجمالي الاستحقاقات",   "Gross Earnings",    "","","payroll",null,new[]{"gross","earnings","استحقاق"},    Measure,   true,  ReportEnabled: true),
+                new SemanticField("PayrollPayslip","TotalDeductions","إجمالي الخصومات",       "Total Deductions",  "","","payroll",null,new[]{"deductions","خصومات"},            Measure,   true,  ReportEnabled: true),
+                new SemanticField("PayrollPayslip","NetAmount",      "صافي الراتب",           "Net Amount",        "","","payroll",null,new[]{"net","amount","صافي"},            Measure,   true,  ReportEnabled: true),
+                new SemanticField("PayrollPayslip","Currency",       "العملة",                "Currency",          "","","payroll",null,new[]{"currency","عملة"},                Dimension, true,  ReportEnabled: true),
             }),
 
         // ── AttendanceRecord ──────────────────────────────────────────────────
@@ -123,11 +128,17 @@ public static class CatalogRegistry
             RecommendedWidgetCodes: Array.Empty<string>(),
             Fields: new[]
             {
-                new SemanticField("AttendanceRecord","Status",          "الحالة",                "Status",          "حالة الحضور","Attendance status","attendance",null,new[]{"status","حالة"},  Dimension, true),
-                new SemanticField("AttendanceRecord","Date",            "التاريخ",               "Date",            "","","attendance",null,new[]{"date","تاريخ"},                               Dimension, true),
-                new SemanticField("AttendanceRecord","LateMinutes",     "دقائق التأخير",          "Late Minutes",    "","","attendance",null,new[]{"late","تاخير","دقائق"},                      Measure,   true),
-                new SemanticField("AttendanceRecord","OvertimeMinutes", "دقائق العمل الإضافي",   "Overtime Minutes","","","attendance",null,new[]{"overtime","اضافي","دقائق"},                  Measure,   true),
-                new SemanticField("AttendanceRecord","WorkedMinutes",   "دقائق العمل",            "Worked Minutes",  "","","attendance",null,new[]{"worked","عمل","دقائق"},                     Measure,   true),
+                new SemanticField("AttendanceRecord","EmployeeId",      "الموظف",                "Employee",        "","","employment",null,new[]{"employee","موظف"},                            Dimension, true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","Date",            "التاريخ",               "Date",            "","","attendance",null,new[]{"date","تاريخ"},                               Dimension, true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","Status",          "حالة الحضور",           "Status",          "حالة الحضور","Attendance status","attendance",null,new[]{"status","حالة"},  Dimension, true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","ShiftId",         "الوردية",               "Shift",           "","","attendance",null,new[]{"shift","وردية"},                              Dimension, false, ReportEnabled: true),
+                new SemanticField("AttendanceRecord","CheckIn",         "وقت الدخول",            "Check In",        "","","attendance",null,new[]{"checkin","دخول"},                             Dimension, true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","CheckOut",        "وقت الخروج",            "Check Out",       "","","attendance",null,new[]{"checkout","خروج"},                            Dimension, true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","RequiredMinutes", "الدقائق المطلوبة",       "Required Minutes","","","attendance",null,new[]{"required","مطلوب","دقائق"},                  Measure,   false, ReportEnabled: true),
+                new SemanticField("AttendanceRecord","WorkedMinutes",   "دقائق العمل",            "Worked Minutes",  "","","attendance",null,new[]{"worked","عمل","دقائق"},                     Measure,   true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","LateMinutes",     "دقائق التأخير",          "Late Minutes",    "","","attendance",null,new[]{"late","تاخير","دقائق"},                      Measure,   true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","ShortageMinutes", "دقائق الانصراف المبكر", "Shortage Minutes","","","attendance",null,new[]{"shortage","مبكر","دقائق"},                   Measure,   true,  ReportEnabled: true),
+                new SemanticField("AttendanceRecord","OvertimeMinutes", "دقائق العمل الإضافي",   "Overtime Minutes","","","attendance",null,new[]{"overtime","اضافي","دقائق"},                  Measure,   true,  ReportEnabled: true),
             }),
 
         // ── LeaveBalance ──────────────────────────────────────────────────────
@@ -153,10 +164,12 @@ public static class CatalogRegistry
             RecommendedWidgetCodes: Array.Empty<string>(),
             Fields: new[]
             {
-                new SemanticField("LeaveBalance","Year",               "السنة",                   "Year",                "","","leave",null,new[]{"year","سنة"},                   Dimension, true),
-                new SemanticField("LeaveBalance","EntitledDays",       "الأيام المستحقة",          "Entitled Days",       "","","leave",null,new[]{"entitled","مستحق"},              Measure,   true),
-                new SemanticField("LeaveBalance","UsedDays",           "الأيام المستخدمة",         "Used Days",           "","","leave",null,new[]{"used","مستخدم"},                 Measure,   true),
-                new SemanticField("LeaveBalance","CarriedForwardDays", "الأيام المرحلة",            "Carried Forward Days","","","leave",null,new[]{"carried","مرحل"},               Measure,   true),
+                new SemanticField("LeaveBalance","EmployeeId",         "الموظف",                  "Employee",            "","","employment",null,new[]{"employee","موظف"},            Dimension, true,  ReportEnabled: true),
+                new SemanticField("LeaveBalance","LeaveTypeId",        "نوع الإجازة",             "Leave Type",          "","","leave",null,new[]{"type","نوع","إجازة"},              Dimension, true,  ReportEnabled: true),
+                new SemanticField("LeaveBalance","Year",               "السنة",                   "Year",                "","","leave",null,new[]{"year","سنة"},                   Dimension, true,  ReportEnabled: true),
+                new SemanticField("LeaveBalance","EntitledDays",       "الأيام المستحقة",          "Entitled Days",       "","","leave",null,new[]{"entitled","مستحق"},              Measure,   true,  ReportEnabled: true),
+                new SemanticField("LeaveBalance","UsedDays",           "الأيام المستخدمة",         "Used Days",           "","","leave",null,new[]{"used","مستخدم"},                 Measure,   true,  ReportEnabled: true),
+                new SemanticField("LeaveBalance","CarriedForwardDays", "المرحّلة",                 "Carried Forward Days","","","leave",null,new[]{"carried","مرحل"},               Measure,   true,  ReportEnabled: true),
             }),
 
         // ── RequestInstance ───────────────────────────────────────────────────
@@ -181,9 +194,11 @@ public static class CatalogRegistry
             RecommendedWidgetCodes: Array.Empty<string>(),
             Fields: new[]
             {
-                new SemanticField("RequestInstance","Status",        "الحالة",        "Status",         "حالة الطلب","Request status","employment",null,new[]{"status","حالة"},   Dimension,  true),
-                new SemanticField("RequestInstance","RequestNumber", "رقم الطلب",     "Request Number", "","","employment",null,new[]{"number","رقم"},                           Identifier, true),
-                new SemanticField("RequestInstance","SubmittedAt",   "تاريخ التقديم", "Submitted At",   "","","employment",null,new[]{"submitted","تقديم"},                      Dimension,  true),
+                new SemanticField("RequestInstance","RequestNumber", "رقم الطلب",     "Request Number", "","","employment",null,new[]{"number","رقم"},                           Identifier, true,  ReportEnabled: true),
+                new SemanticField("RequestInstance","EmployeeId",    "الموظف",        "Employee",       "","","employment",null,new[]{"employee","موظف"},                        Dimension,  true,  ReportEnabled: true),
+                new SemanticField("RequestInstance","RequestTypeId", "نوع الطلب",     "Request Type",   "","","employment",null,new[]{"type","نوع","طلب"},                       Dimension,  true,  ReportEnabled: true),
+                new SemanticField("RequestInstance","Status",        "الحالة",        "Status",         "حالة الطلب","Request status","employment",null,new[]{"status","حالة"},   Dimension,  true,  ReportEnabled: true),
+                new SemanticField("RequestInstance","SubmittedAt",   "تاريخ التقديم", "Submitted At",   "","","employment",null,new[]{"submitted","تقديم"},                      Dimension,  true,  ReportEnabled: true),
             }),
 
         // ── Loan ──────────────────────────────────────────────────────────────

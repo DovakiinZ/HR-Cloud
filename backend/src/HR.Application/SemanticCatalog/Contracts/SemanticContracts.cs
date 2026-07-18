@@ -12,7 +12,7 @@ public sealed record SemanticField(
     string ObjectCode, string FieldCode,
     string NameAr, string NameEn, string DescriptionAr, string DescriptionEn,
     string GroupCode, string? Icon, IReadOnlyList<string> Keywords,
-    SemanticFieldRole Role, bool DefaultVisible);
+    SemanticFieldRole Role, bool DefaultVisible, bool ReportEnabled = false);
 
 public sealed record SemanticSort(string FieldCode, string Direction); // "Ascending"|"Descending"
 
