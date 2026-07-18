@@ -56,7 +56,14 @@ export function WidgetRenderer({ type, result, onSelect }: RendererProps) {
     if (type === "Gauge") return <Gauge value={result.value ?? 0} percentage={pct} />;
     return (
       <div className="flex h-full flex-col items-center justify-center py-2">
-        <span className="text-4xl font-bold tabular-nums">
+        <span
+          className={`text-4xl font-bold tabular-nums${onSelect ? " cursor-pointer hover:opacity-80" : ""}`}
+          {...(onSelect ? {
+            role: "button",
+            title: "عرض التفاصيل",
+            onClick: () => onSelect({ key: "", label: "", value: result.value ?? 0 }),
+          } : {})}
+        >
           {pct ? `${formatNumber(result.value)}%` : formatNumber(result.value)}
         </span>
       </div>
@@ -77,7 +84,13 @@ export function WidgetRenderer({ type, result, onSelect }: RendererProps) {
           </thead>
           <tbody>
             {result.rows.map((row, i) => (
-              <tr key={i} className="border-b border-border/40 hover:bg-muted/40">
+              <tr
+                key={i}
+                className={`border-b border-border/40${onSelect ? " cursor-pointer hover:bg-muted/50" : " hover:bg-muted/40"}`}
+                {...(onSelect ? {
+                  onClick: () => onSelect({ key: "", label: String(Object.values(row)[0] ?? ""), value: 0 }),
+                } : {})}
+              >
                 {result.columns.map((c) => (
                   <td key={c.code} className="px-2 py-1.5 whitespace-nowrap">{renderCell(row[c.code])}</td>
                 ))}
