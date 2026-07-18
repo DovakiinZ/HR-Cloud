@@ -1,7 +1,9 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Interfaces;
+using HR.Application.Common.Models;
 using HR.Application.SemanticCatalog;
+using HR.Application.SemanticCatalog.Contracts;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -10,6 +12,7 @@ namespace HR.Modules.Platform.Controllers;
 /// <summary>
 /// Read-only Semantic Catalog API — exposes permission-filtered domains, objects,
 /// metrics, and full-text search. Powers the AI assistant and widget builder.
+/// Responses use the standard ApiResponse envelope (unwrapped by the frontend apiFetch).
 /// </summary>
 [Authorize]
 [Route("api/platform/catalog")]
@@ -28,31 +31,44 @@ public sealed class SemanticCatalogController : BaseApiController
 
     [HttpGet("domains")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult GetDomains() => Ok(_catalog.GetDomains(Ctx));
+    public ActionResult<ApiResponse<IReadOnlyList<SemanticDomain>>> GetDomains()
+        => OkResponse(_catalog.GetDomains(Ctx));
 
     [HttpGet("objects")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult GetObjects([FromQuery] string? domain) => Ok(_catalog.GetObjects(Ctx, domain));
+    public ActionResult<ApiResponse<IReadOnlyList<SemanticObject>>> GetObjects([FromQuery] string? domain)
+        => OkResponse(_catalog.GetObjects(Ctx, domain));
 
     [HttpGet("objects/{objectCode}")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult GetObject(string objectCode)
-        => _catalog.GetObject(Ctx, objectCode) is { } o ? Ok(o) : NotFound();
+    public ActionResult<ApiResponse<SemanticObject>> GetObject(string objectCode)
+    {
+        var o = _catalog.GetObject(Ctx, objectCode);
+        if (o is null) return NotFound(ApiResponse.Fail($"Object '{objectCode}' not found"));
+        return OkResponse(o);
+    }
 
     [HttpGet("metrics")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult GetMetrics([FromQuery] string? domain) => Ok(_catalog.GetMetrics(Ctx, domain));
+    public ActionResult<ApiResponse<IReadOnlyList<SemanticMetric>>> GetMetrics([FromQuery] string? domain)
+        => OkResponse(_catalog.GetMetrics(Ctx, domain));
 
     [HttpGet("metrics/{metricCode}")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult GetMetric(string metricCode)
-        => _catalog.GetMetric(Ctx, metricCode) is { } m ? Ok(m) : NotFound();
+    public ActionResult<ApiResponse<SemanticMetric>> GetMetric(string metricCode)
+    {
+        var m = _catalog.GetMetric(Ctx, metricCode);
+        if (m is null) return NotFound(ApiResponse.Fail($"Metric '{metricCode}' not found"));
+        return OkResponse(m);
+    }
 
     [HttpGet("search")]
     [RequirePermission("Platform.Dashboards.View", "Platform.Reports.View")]
-    public IActionResult Search([FromQuery] string? q) => Ok(_catalog.Search(Ctx, q ?? ""));
+    public ActionResult<ApiResponse<IReadOnlyList<SemanticSearchHit>>> Search([FromQuery] string? q)
+        => OkResponse(_catalog.Search(Ctx, q ?? ""));
 
     [HttpGet("health")]
     [RequirePermission("Platform.Dashboards.Create")]
-    public IActionResult Health() => Ok(_catalog.GetHealth());
+    public ActionResult<ApiResponse<CatalogHealth>> Health()
+        => OkResponse(_catalog.GetHealth());
 }
