@@ -2,12 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, FileSpreadsheet, FileText, FileType, Loader2, Pin, RefreshCw, Share2, Star, Tag as TagIcon } from "lucide-react";
+import { BarChart3, FileSpreadsheet, FileText, FileType, Loader2, Pin, RefreshCw, Settings2, Share2, Sparkles, Star, Tag as TagIcon, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { usePermission } from "@/lib/permissions";
 import {
   getReports, exportReport, getReportFolders, getReportTags, getReportShares,
   toggleReportFavorite, toggleReportPin, setReportFolder, assignReportTag, unassignReportTag,
+  seedSystemReports,
   ReportDefinition, ExportFormat, ReportFolder, ReportTag, ReportShare,
 } from "@/lib/api/reports";
 import { ReportsSidebar } from "@/components/reports/reports-sidebar";
@@ -36,6 +37,7 @@ export default function ReportsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
   const [tagPanel, setTagPanel] = useState<string | null>(null); // reportId whose tag panel is open
   const [share, setShare] = useState<{ report: ReportDefinition; shares: ReportShare[] } | null>(null);
 
@@ -77,6 +79,22 @@ export default function ReportsPage() {
     try { setShare({ report: share.report, shares: await getReportShares(share.report.id) }); } catch { /* ignore */ }
   };
 
+  const seedStandard = async () => {
+    setSeeding(true);
+    try {
+      const res = await seedSystemReports();
+      toast.success(res.created > 0 ? `تم إنشاء ${res.created} تقرير أساسي` : "التقارير الأساسية موجودة بالفعل");
+      await fetchReports();
+    } catch { toast.error("تعذر إنشاء التقارير الأساسية"); }
+    finally { setSeeding(false); }
+  };
+
+  // "التقارير الأساسية" (standard, auto-seeded) vs. everything else.
+  const standard = reports.filter((r) => (r.code ?? "").startsWith("SYS_"));
+  const custom = reports.filter((r) => !(r.code ?? "").startsWith("SYS_"));
+  const filtered = view || folderId || tagId; // when filtering, don't split — show the flat result
+  const tableRows = filtered ? reports : custom;
+
   return (
     <div className="space-y-6" dir="rtl">
       <div className="flex items-start justify-between gap-4">
@@ -85,7 +103,8 @@ export default function ReportsPage() {
           <p className="text-sm text-muted-foreground mt-1">التقارير والإحصائيات — تنظيم وتشغيل وتصدير</p>
         </div>
         <div className="flex items-center gap-2">
-          {canCreate && <Link href="/reports/builder" className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">+ تقرير جديد</Link>}
+          {canCreate && <Link href="/reports/new" className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90"><Zap className="h-4 w-4" /> تقرير جديد</Link>}
+          {canCreate && <Link href="/reports/builder" title="المنشئ المتقدم" className="inline-flex h-9 items-center gap-2 border border-border bg-secondary px-3 text-sm hover:bg-secondary/70"><Settings2 className="h-4 w-4" /> متقدم</Link>}
           <button onClick={fetchReports} className="inline-flex h-9 items-center gap-2 border border-border bg-secondary px-3 text-sm hover:bg-secondary/70"><RefreshCw className="h-4 w-4" /> تحديث</button>
         </div>
       </div>
@@ -97,7 +116,35 @@ export default function ReportsPage() {
           onFoldersChanged={fetchFolders} onTagsChanged={fetchTags}
         />
 
-        <div className="flex-1 min-w-0">
+        <div className="flex-1 min-w-0 space-y-6">
+          {/* التقارير الأساسية — auto-seeded standard reports, one-click launch */}
+          {!filtered && !loading && !error && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-sm font-semibold"><Sparkles className="h-4 w-4 text-primary" /> التقارير الأساسية</h2>
+                {canCreate && (
+                  <button onClick={seedStandard} disabled={seeding} className="inline-flex h-8 items-center gap-1.5 border border-border bg-secondary px-2.5 text-xs hover:bg-secondary/70 disabled:opacity-50">
+                    {seeding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />} {standard.length === 0 ? "إنشاء التقارير الأساسية" : "تحديث الأساسية"}
+                  </button>
+                )}
+              </div>
+              {standard.length === 0 ? (
+                <div className="border border-dashed border-border bg-card p-6 text-center text-xs text-muted-foreground">
+                  لا توجد تقارير أساسية بعد — اضغط «إنشاء التقارير الأساسية» لتوليد تقرير قياسي جاهز لكل موضوع.
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+                  {standard.map((r) => (
+                    <Link key={r.id} href={`/reports/${r.id}`} className="flex flex-col gap-1 border border-border bg-card p-3 hover:border-primary hover:bg-secondary/40">
+                      <span className="text-sm font-medium truncate">{r.nameAr || r.nameEn}</span>
+                      <span className="text-[11px] text-muted-foreground">{r.reportType}</span>
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="border border-border bg-card p-12 flex items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-muted-foreground" /></div>
           ) : error ? (
@@ -106,11 +153,11 @@ export default function ReportsPage() {
               <p className="text-sm text-muted-foreground mb-2">تعذر تحميل التقارير</p>
               <button onClick={fetchReports} className="text-sm underline">إعادة المحاولة</button>
             </div>
-          ) : reports.length === 0 ? (
+          ) : tableRows.length === 0 ? (
             <div className="border border-border bg-card p-12 flex flex-col items-center text-center">
               <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-              <h2 className="text-lg font-semibold mb-2">لا توجد تقارير</h2>
-              <p className="text-sm text-muted-foreground">لا توجد تقارير مطابقة للمرشّح الحالي.</p>
+              <h2 className="text-lg font-semibold mb-2">{filtered ? "لا توجد تقارير" : "لا توجد تقارير مخصّصة"}</h2>
+              <p className="text-sm text-muted-foreground">{filtered ? "لا توجد تقارير مطابقة للمرشّح الحالي." : "أنشئ تقريرك الأول عبر «تقرير جديد»."}</p>
             </div>
           ) : (
             <div className="border border-border bg-card overflow-x-auto">
@@ -124,7 +171,7 @@ export default function ReportsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {reports.map((r) => (
+                  {tableRows.map((r) => (
                     <tr key={r.id} className="border-b border-border/60 last:border-0 hover:bg-secondary/40 align-top">
                       <td className="px-4 py-3">
                         <Link href={`/reports/${r.id}`} className="font-medium hover:underline">{r.nameAr || r.nameEn}</Link>

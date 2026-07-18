@@ -596,3 +596,107 @@ export const addSchedule = (id: string, body: Record<string, unknown>) =>
   apiFetch<ReportSchedule>(`/api/platform/reports/${id}/schedules`, { method: "POST", body });
 export const deleteSchedule = (scheduleId: string) =>
   apiFetch<unknown>(`/api/platform/reports/schedules/${scheduleId}`, { method: "DELETE" });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+//  Report Field Registry — the simple, business-friendly layer (Reports simplification).
+//  Subjects = business areas; fields = friendly, permission-scoped columns keyed by an
+//  opaque business key. The simple builder sends ONLY these keys — never entity names,
+//  columns, joins or SQL. The server discovers the primary object + join chain.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+export interface ReportSubject {
+  key: string;
+  labelAr: string;
+  labelEn: string;
+  icon: string;
+  sortOrder: number;
+}
+
+export interface ReportJoinStep {
+  sourceObjectCode: string;
+  targetObjectCode: string;
+  joinField: string;
+}
+
+/** A friendly, resolvable report field. `key` is opaque — display the label, pass back the key. */
+export interface ReportFieldDescriptor {
+  key: string;
+  labelAr: string;
+  labelEn: string;
+  subject: string;
+  group: string;
+  dataType: FieldKind;
+  objectDefinitionId: string;
+  objectCode: string;
+  /** The physical column. Two fields sharing it can't coexist in one R1 report — used to warn client-side. */
+  propertyPath: string;
+  joinPath: ReportJoinStep[];
+  allowedOperators: ReportFilterOperator[];
+  filterable: boolean;
+  sortable: boolean;
+  groupable: boolean;
+  aggregatable: boolean;
+  defaultAggregation?: AggregationType | null;
+  isDefault: boolean;
+  displayOrder: number;
+  formatPattern?: string | null;
+  requiredPermission: string;
+}
+
+/** Business areas the current user may report on (subjects with ≥1 visible field). */
+export const getReportSubjects = () =>
+  apiFetch<ReportSubject[]>("/api/platform/reports/subjects");
+
+/** The permission-scoped friendly fields of a subject. */
+export const getReportSubjectFields = (subject: string) =>
+  apiFetch<ReportFieldDescriptor[]>(`/api/platform/reports/subjects/${subject}/fields`);
+
+// ── Quick (simplified) report create — Phases 3+4 ──────────────────────────────────
+
+export interface QuickFilterInput {
+  fieldKey: string;
+  operator: ReportFilterOperator;
+  value?: string | null;
+  valueTo?: string | null;
+  isParameter?: boolean;
+}
+
+export interface QuickSortInput {
+  fieldKey: string;
+  direction: SortDirection;
+}
+
+export interface CreateQuickReportInput {
+  nameAr: string;
+  nameEn: string;
+  description?: string | null;
+  scope?: ReportScope;
+  /** Ordered registry field keys to show as columns. */
+  fieldKeys: string[];
+  filters?: QuickFilterInput[];
+  groupByKeys?: string[];
+  sorts?: QuickSortInput[];
+}
+
+export interface QuickReportResult {
+  report: ReportDefinition;
+  /** Fields dropped because they collided or couldn't be joined (surface to the user). */
+  skippedFieldKeys: string[];
+  skippedFilterKeys: string[];
+  unknownKeys: string[];
+}
+
+/** Build a runnable report from friendly field keys. The server discovers joins automatically. */
+export const createQuickReport = (input: CreateQuickReportInput) =>
+  apiFetch<QuickReportResult>("/api/platform/reports/quick", { method: "POST", body: input });
+
+// ── System / standard reports seeding — Phase 2 (idempotent, per tenant) ────────────
+
+export interface SeedSystemReportsResult {
+  created: number;
+  skipped: number;
+  codes: string[];
+}
+
+export const seedSystemReports = () =>
+  apiFetch<SeedSystemReportsResult>("/api/platform/reports/seed-system", { method: "POST" });
