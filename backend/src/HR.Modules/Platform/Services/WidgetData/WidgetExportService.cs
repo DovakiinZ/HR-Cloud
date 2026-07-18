@@ -37,6 +37,7 @@ public sealed class WidgetExportService : IWidgetExportService
     }
 
     private const int MaxExportRows = 5000;
+    private const int PageSize = 200;
 
     public async Task<WidgetExportFile> ExportRowsAsync(WidgetQuerySpec spec, string? segmentKey,
         IReadOnlyList<WidgetFilterSpec>? dashboardFilters, ExportFormat format, string title, CancellationToken ct)
@@ -44,9 +45,45 @@ public sealed class WidgetExportService : IWidgetExportService
         var writer = _writers.FirstOrDefault(w => w.Format == format)
             ?? throw new ValidationException(new[] { new FluentValidation.Results.ValidationFailure("format", $"Unsupported export format '{format}'.") });
 
-        var result = await _data.GetRowsAsync(spec, segmentKey, dashboardFilters, 1, MaxExportRows, ct);
+        var allRows = new List<Dictionary<string, object?>>();
+        List<TableColumn>? columns = null;
+        long totalCount = 0;
+        int page = 1;
+
+        while (true)
+        {
+            var result = await _data.GetRowsAsync(spec, segmentKey, dashboardFilters, page, PageSize, ct);
+
+            if (page == 1)
+            {
+                columns = result.Columns;
+                totalCount = result.TotalCount;
+            }
+
+            if (result.Rows.Count == 0)
+                break;
+
+            allRows.AddRange(result.Rows);
+
+            if (allRows.Count >= totalCount || allRows.Count >= MaxExportRows)
+                break;
+
+            page++;
+        }
+
+        if (allRows.Count > MaxExportRows)
+            allRows.RemoveRange(MaxExportRows, allRows.Count - MaxExportRows);
+
+        var combined = new WidgetDataResult
+        {
+            Kind = "table",
+            Columns = columns ?? new List<TableColumn>(),
+            Rows = allRows,
+            TotalCount = allRows.Count,
+        };
+
         var name = string.IsNullOrWhiteSpace(title) ? "details" : title;
-        var dataset = WidgetResultFlattener.Flatten(result, name);
+        var dataset = WidgetResultFlattener.Flatten(combined, name);
         var bytes = writer.Write(dataset);
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
