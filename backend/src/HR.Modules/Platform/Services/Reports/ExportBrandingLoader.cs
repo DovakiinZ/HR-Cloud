@@ -18,6 +18,8 @@ public static class ExportBrandingLoader
 
     public static async Task<CompanyBranding?> LoadAsync(ApplicationDbContext db, CancellationToken ct)
     {
+        // Branding is optional: no db context -> no header (export still renders, just unbranded).
+        if (db is null) return null;
         var c = await db.CompanyProfiles.AsNoTracking().FirstOrDefaultAsync(ct);
         if (c is null) return null;
         byte[]? logo = null;
