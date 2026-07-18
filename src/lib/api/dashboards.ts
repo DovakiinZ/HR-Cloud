@@ -203,3 +203,37 @@ export async function exportWidget(widgetId: string, format: WidgetExportFormat,
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+/** Download drill-down detail rows as a real file (server-side Excel/PDF/CSV). Mirrors exportWidget's blob-download mechanism. */
+export async function exportDrilldown(
+  spec: WidgetQuerySpec,
+  segmentKey: string | null,
+  format: WidgetExportFormat,
+  dashboardFilters?: WidgetFilterSpec[],
+  title = "details",
+): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/platform/dashboards/widget-data/drilldown/export?format=${format}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ spec, segmentKey, dashboardFilters, title }),
+  });
+  if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
+  if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير هذه البيانات"); throw new Error("Forbidden"); }
+  if (!res.ok) { toast.error("تعذر تصدير البيانات"); throw new Error(`Export failed (${res.status})`); }
+
+  let filename = `${title}-${new Date().toISOString().slice(0, 10)}.${WIDGET_EXT[format]}`;
+  const cd = res.headers.get("Content-Disposition");
+  const match = cd?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1].replace(/"/g, ""));
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
