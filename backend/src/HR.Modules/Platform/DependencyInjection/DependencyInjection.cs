@@ -74,6 +74,12 @@ public static class DependencyInjection
         services.AddScoped<HR.Modules.Platform.Services.Reports.IReportScheduleRunner,
             HR.Modules.Platform.Services.Reports.ReportScheduleRunner>();
 
+        // Report Field Registry — permission-aware, code-defined field/subject catalog
+        services.AddScoped<HR.Application.Reports.Registry.IReportObjectIdResolver,
+            HR.Modules.Platform.Services.Reports.ReportObjectIdResolver>();
+        services.AddScoped<HR.Application.Reports.Registry.IReportFieldRegistry,
+            HR.Modules.Platform.Services.Reports.ReportFieldRegistryAdapter>();
+
         // Semantic Catalog — permission-aware, code-defined object/metric catalog
         services.AddScoped<HR.Application.SemanticCatalog.ISemanticCatalogProvider,
             HR.Modules.Platform.Services.SemanticCatalog.CodeDefinedSemanticCatalog>();

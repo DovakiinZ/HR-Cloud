@@ -1,6 +1,8 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
+using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Reports.Registry;
 using HR.Modules.Platform.Commands.Reports;
 using HR.Modules.Platform.DTOs.Reports;
 using HR.Modules.Platform.Queries.Reports;
@@ -14,6 +16,17 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/reports")]
 public class ReportsController : BaseApiController
 {
+    private readonly IReportFieldRegistry _registry;
+    private readonly ICurrentUserService _user;
+
+    public ReportsController(IReportFieldRegistry registry, ICurrentUserService user)
+    {
+        _registry = registry;
+        _user = user;
+    }
+
+    private ReportRegistryContext RegCtx => new(_user.Permissions);
+
     [HttpGet]
     [RequirePermission("Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<ReportDefinitionDto>>>> GetAll([FromQuery] GetReportsQuery query, CancellationToken ct)
@@ -254,4 +267,29 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<bool>>> TogglePin(Guid id, CancellationToken ct)
     { var result = await Mediator.Send(new ToggleReportPinCommand(id), ct); return OkResponse(result); }
+
+    // Field Registry — read-only, permission-scoped catalog of subjects + fields
+    [HttpGet("subjects")]
+    [RequirePermission("Platform.Reports.View")]
+    public ActionResult<ApiResponse<IReadOnlyList<ReportSubjectDescriptor>>> GetReportSubjects()
+        => OkResponse(_registry.GetSubjects(RegCtx));
+
+    [HttpGet("subjects/{subject}/fields")]
+    [RequirePermission("Platform.Reports.View")]
+    public ActionResult<ApiResponse<IReadOnlyList<ReportFieldDescriptor>>> GetReportSubjectFields(string subject)
+        => OkResponse(_registry.GetFields(RegCtx, subject));
+
+    [HttpGet("fields/{key}")]
+    [RequirePermission("Platform.Reports.View")]
+    public IActionResult GetReportField(string key)
+    {
+        var f = _registry.GetField(RegCtx, key);
+        if (f is null) return NotFound(ApiResponse.Fail($"Field '{key}' not found"));
+        return Ok(ApiResponse<ReportFieldDescriptor>.Ok(f));
+    }
+
+    [HttpGet("registry/health")]
+    [RequirePermission("Platform.Reports.Delete")]
+    public ActionResult<ApiResponse<ReportRegistryHealth>> GetRegistryHealth()
+        => OkResponse(_registry.GetHealth());
 }
