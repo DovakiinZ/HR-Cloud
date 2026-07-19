@@ -7,6 +7,7 @@ using HR.Modules.Platform.Queries.Reports;
 using HR.Modules.Platform.Services.Reports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HR.Modules.Platform.Controllers;
 
@@ -14,6 +15,17 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/reports")]
 public class ReportsController : BaseApiController
 {
+    /// <summary>Idempotently provision the built-in report definitions for this tenant.
+    /// Existing reports with the same code are left untouched, so this is safe to re-run.</summary>
+    [HttpPost("seed-defaults")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ReportSeedOutcome>>>> SeedDefaults(CancellationToken ct)
+    {
+        var seeder = HttpContext.RequestServices.GetRequiredService<IReportSeeder>();
+        var outcomes = await seeder.SeedDefaultsAsync(ct);
+        return OkResponse(outcomes, "Default reports ready");
+    }
+
     [HttpGet]
     [RequirePermission("Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<ReportDefinitionDto>>>> GetAll([FromQuery] GetReportsQuery query, CancellationToken ct)
