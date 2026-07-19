@@ -1,6 +1,8 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
+using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Reports.Registry;
 using HR.Modules.Platform.Commands.Reports;
 using HR.Modules.Platform.DTOs.Reports;
 using HR.Modules.Platform.Queries.Reports;
@@ -15,8 +17,23 @@ namespace HR.Modules.Platform.Controllers;
 [Route("api/platform/reports")]
 public class ReportsController : BaseApiController
 {
-    /// <summary>Idempotently provision the built-in report definitions for this tenant.
-    /// Existing reports with the same code are left untouched, so this is safe to re-run.</summary>
+    private readonly IReportFieldRegistry _registry;
+    private readonly ICurrentUserService _user;
+
+    public ReportsController(IReportFieldRegistry registry, ICurrentUserService user)
+    {
+        _registry = registry;
+        _user = user;
+    }
+
+    private ReportRegistryContext RegCtx => new(_user.Permissions);
+
+    /// <summary>Idempotently provision the seven named built-in reports (daily attendance, late,
+    /// absence, attendance summary, leave balance, payroll register, employee directory).
+    ///
+    /// Distinct from seed-system, which generates one generic SYS_&lt;subject&gt; report per registry
+    /// subject: these are specific named reports whose codes never collide with SYS_*, so both
+    /// seeders can run against the same tenant. Existing reports are left untouched either way.</summary>
     [HttpPost("seed-defaults")]
     [RequirePermission("Platform.Reports.Create")]
     public async Task<ActionResult<ApiResponse<IReadOnlyList<ReportSeedOutcome>>>> SeedDefaults(CancellationToken ct)
@@ -135,9 +152,10 @@ public class ReportsController : BaseApiController
     public async Task<ActionResult<ApiResponse>> DeleteSorting(Guid sortingId, CancellationToken ct)
     { await Mediator.Send(new DeleteReportSortingCommand(sortingId), ct); return OkResponse("Sorting removed"); }
 
-    // Formula validation — pure, no DB, so the builder can validate as the user types.
+    // Formula validation — pure, no DB, so the reports builder AND the dashboard widget builder
+    // can validate as the user types (widened to Dashboards.View for the widget Calculated mode).
     [HttpPost("validate-formula")]
-    [RequirePermission("Platform.Reports.Edit")]
+    [RequirePermission("Platform.Reports.Edit", "Platform.Dashboards.View")]
     public ActionResult<ApiResponse<FormulaValidationDto>> ValidateFormula([FromBody] ValidateFormulaRequest request)
     {
         var error = ReportFormulaCompiler.Validate(request.Formula);
@@ -161,6 +179,11 @@ public class ReportsController : BaseApiController
     { await Mediator.Send(new DeleteReportRelationshipCommand(relationshipId), ct); return OkResponse("Relationship removed"); }
 
     // Schedules
+    [HttpGet("{id:guid}/schedules")]
+    [RequirePermission("Platform.Reports.View")]
+    public async Task<ActionResult<ApiResponse<List<ReportScheduleDto>>>> GetSchedules(Guid id, CancellationToken ct)
+    { var result = await Mediator.Send(new GetReportSchedulesQuery(id), ct); return OkResponse(result); }
+
     [HttpPost("{id:guid}/schedules")]
     [RequirePermission("Platform.Reports.Edit")]
     public async Task<ActionResult<ApiResponse<ReportScheduleDto>>> AddSchedule(Guid id, [FromBody] AddReportScheduleCommand command, CancellationToken ct)
@@ -260,4 +283,42 @@ public class ReportsController : BaseApiController
     [RequirePermission("Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<bool>>> TogglePin(Guid id, CancellationToken ct)
     { var result = await Mediator.Send(new ToggleReportPinCommand(id), ct); return OkResponse(result); }
+
+    // Field Registry — read-only, permission-scoped catalog of subjects + fields
+    [HttpGet("subjects")]
+    [RequirePermission("Platform.Reports.View")]
+    public ActionResult<ApiResponse<IReadOnlyList<ReportSubjectDescriptor>>> GetReportSubjects()
+        => OkResponse(_registry.GetSubjects(RegCtx));
+
+    [HttpGet("subjects/{subject}/fields")]
+    [RequirePermission("Platform.Reports.View")]
+    public ActionResult<ApiResponse<IReadOnlyList<ReportFieldDescriptor>>> GetReportSubjectFields(string subject)
+        => OkResponse(_registry.GetFields(RegCtx, subject));
+
+    [HttpGet("fields/{key}")]
+    [RequirePermission("Platform.Reports.View")]
+    public IActionResult GetReportField(string key)
+    {
+        var f = _registry.GetField(RegCtx, key);
+        if (f is null) return NotFound(ApiResponse.Fail($"Field '{key}' not found"));
+        return Ok(ApiResponse<ReportFieldDescriptor>.Ok(f));
+    }
+
+    [HttpGet("registry/health")]
+    [RequirePermission("Platform.Reports.Delete")]
+    public ActionResult<ApiResponse<ReportRegistryHealth>> GetRegistryHealth()
+        => OkResponse(_registry.GetHealth());
+
+    // Simplified builder — create a runnable report from trusted registry field keys.
+    // The server discovers the primary object + join chain (no joins/codes/SQL from the client).
+    [HttpPost("quick")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<QuickReportResult>>> CreateQuick([FromBody] CreateQuickReportCommand command, CancellationToken ct)
+    { var result = await Mediator.Send(command, ct); return CreatedResponse(result); }
+
+    // Seed one ready-to-run standard report per subject the caller can see. Idempotent per tenant.
+    [HttpPost("seed-system")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<SeedSystemReportsResult>>> SeedSystemReports(CancellationToken ct)
+    { var result = await Mediator.Send(new SeedSystemReportsCommand(), ct); return OkResponse(result); }
 }

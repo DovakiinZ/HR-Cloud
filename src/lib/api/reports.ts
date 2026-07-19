@@ -225,7 +225,7 @@ export interface ObjectDefinition {
   isActive: boolean;
 }
 
-export type ExportFormat = "excel" | "csv" | "pdf";
+export type ExportFormat = "excel" | "csv" | "pdf" | "sif";
 
 // ── Definition CRUD ────────────────────────────────────────────────────────────────
 
@@ -528,7 +528,7 @@ export async function getSelectableObjects(): Promise<SelectableObject[]> {
 
 // ── Export (raw bytes, so it bypasses apiFetch's JSON envelope) ────────────────────
 
-const EXT: Record<ExportFormat, string> = { excel: "xlsx", csv: "csv", pdf: "pdf" };
+const EXT: Record<ExportFormat, string> = { excel: "xlsx", csv: "csv", pdf: "pdf", sif: "csv" };
 
 /**
  * Download a report export as a file. The export endpoint streams raw bytes (not the JSON
@@ -557,6 +557,15 @@ export async function exportReport(
 
   if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
   if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير التقارير"); throw new Error("Forbidden"); }
+  if (res.status === 400) {
+    let msg = "طلب التصدير غير صالح";
+    try {
+      const body = await res.clone().json();
+      const raw = body?.errors?.columns?.[0] ?? body?.message ?? body?.title ?? null;
+      if (raw) msg = raw;
+    } catch { /* ignore parse errors, use generic message */ }
+    toast.error(msg); throw new Error(`Export bad request (${msg})`);
+  }
   if (!res.ok) { toast.error("تعذر تصدير التقرير"); throw new Error(`Export failed (${res.status})`); }
 
   // Prefer the server's filename from Content-Disposition when present.
@@ -572,3 +581,130 @@ export async function exportReport(
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
+
+// ── Schedules (mirror ReportScheduleDto) — appended by the scheduling sub-project ──
+
+export interface ReportSchedule {
+  id: string; frequency: string; cronExpression?: string | null;
+  exportFormat: string; recipients: string; isActive: boolean;
+  timeOfDayMinutes?: number | null; dayOfWeek?: number | null; dayOfMonth?: number | null;
+  lastRunAt?: string | null; nextRunAt?: string | null;
+}
+
+export const getSchedules = (id: string) => apiFetch<ReportSchedule[]>(`/api/platform/reports/${id}/schedules`);
+export const addSchedule = (id: string, body: Record<string, unknown>) =>
+  apiFetch<ReportSchedule>(`/api/platform/reports/${id}/schedules`, { method: "POST", body });
+export const deleteSchedule = (scheduleId: string) =>
+  apiFetch<unknown>(`/api/platform/reports/schedules/${scheduleId}`, { method: "DELETE" });
+
+// ════════════════════════════════════════════════════════════════════════════════════
+//  Report Field Registry — the simple, business-friendly layer (Reports simplification).
+//  Subjects = business areas; fields = friendly, permission-scoped columns keyed by an
+//  opaque business key. The simple builder sends ONLY these keys — never entity names,
+//  columns, joins or SQL. The server discovers the primary object + join chain.
+// ════════════════════════════════════════════════════════════════════════════════════
+
+export interface ReportSubject {
+  key: string;
+  labelAr: string;
+  labelEn: string;
+  icon: string;
+  sortOrder: number;
+}
+
+export interface ReportJoinStep {
+  sourceObjectCode: string;
+  targetObjectCode: string;
+  joinField: string;
+}
+
+/** A friendly, resolvable report field. `key` is opaque — display the label, pass back the key. */
+export interface ReportFieldDescriptor {
+  key: string;
+  labelAr: string;
+  labelEn: string;
+  subject: string;
+  group: string;
+  dataType: FieldKind;
+  objectDefinitionId: string;
+  objectCode: string;
+  /** The physical column. Two fields sharing it can't coexist in one R1 report — used to warn client-side. */
+  propertyPath: string;
+  joinPath: ReportJoinStep[];
+  allowedOperators: ReportFilterOperator[];
+  filterable: boolean;
+  sortable: boolean;
+  groupable: boolean;
+  aggregatable: boolean;
+  defaultAggregation?: AggregationType | null;
+  isDefault: boolean;
+  displayOrder: number;
+  formatPattern?: string | null;
+  requiredPermission: string;
+}
+
+/** Business areas the current user may report on (subjects with ≥1 visible field). */
+export const getReportSubjects = () =>
+  apiFetch<ReportSubject[]>("/api/platform/reports/subjects");
+
+/** The permission-scoped friendly fields of a subject. */
+export const getReportSubjectFields = (subject: string) =>
+  apiFetch<ReportFieldDescriptor[]>(`/api/platform/reports/subjects/${subject}/fields`);
+
+// ── Quick (simplified) report create — Phases 3+4 ──────────────────────────────────
+
+export interface QuickFilterInput {
+  fieldKey: string;
+  operator: ReportFilterOperator;
+  value?: string | null;
+  valueTo?: string | null;
+  isParameter?: boolean;
+}
+
+export interface QuickSortInput {
+  fieldKey: string;
+  direction: SortDirection;
+}
+
+export interface CreateQuickReportInput {
+  nameAr: string;
+  nameEn: string;
+  description?: string | null;
+  scope?: ReportScope;
+  /** Ordered registry field keys to show as columns. */
+  fieldKeys: string[];
+  filters?: QuickFilterInput[];
+  groupByKeys?: string[];
+  sorts?: QuickSortInput[];
+}
+
+export interface QuickReportResult {
+  report: ReportDefinition;
+  /** Fields dropped because they collided or couldn't be joined (surface to the user). */
+  skippedFieldKeys: string[];
+  skippedFilterKeys: string[];
+  unknownKeys: string[];
+}
+
+/** Build a runnable report from friendly field keys. The server discovers joins automatically. */
+export const createQuickReport = (input: CreateQuickReportInput) =>
+  apiFetch<QuickReportResult>("/api/platform/reports/quick", { method: "POST", body: input });
+
+// ── System / standard reports seeding — Phase 2 (idempotent, per tenant) ────────────
+
+export interface SeedSystemReportsResult {
+  created: number;
+  skipped: number;
+  codes: string[];
+}
+
+export const seedSystemReports = () =>
+  apiFetch<SeedSystemReportsResult>("/api/platform/reports/seed-system", { method: "POST" });
+
+/**
+ * Register the main HR entities + the generic MasterDataItem table as reportable ObjectDefinitions.
+ * Idempotent. Must run once (per tenant) before master-data references (leave type, nationality,
+ * request type, …) resolve to their real names instead of Guids. Returns the number newly added.
+ */
+export const seedReportableObjects = () =>
+  apiFetch<number>("/api/platform/objects/seed-reportable", { method: "POST" });

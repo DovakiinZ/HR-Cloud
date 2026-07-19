@@ -35,9 +35,12 @@ public sealed class WidgetDataService : IWidgetDataService
     public async Task<WidgetDataResult> ExecuteAsync(WidgetQuerySpec spec, IReadOnlyList<WidgetFilterSpec>? dashboardFilters, CancellationToken ct)
     {
         var obj = Resolve(spec.ObjectCode);
-        var agg = ParseAggregation(spec.Aggregation);
         var filters = Combine(spec.Filters, dashboardFilters);
 
+        if (string.Equals(spec.Aggregation, "Formula", StringComparison.OrdinalIgnoreCase) && string.IsNullOrWhiteSpace(spec.GroupByField))
+            return await ExecuteFormulaScalarAsync(obj, spec, filters, ct);
+
+        var agg = ParseAggregation(spec.Aggregation);
         if (string.IsNullOrWhiteSpace(spec.GroupByField))
             return await ExecuteScalarAsync(obj, agg, spec, filters, ct);
         return await ExecuteSeriesAsync(obj, agg, spec, filters, ct);
@@ -151,6 +154,37 @@ public sealed class WidgetDataService : IWidgetDataService
     {
         Kind = "scalar", ObjectCode = obj.Code, Aggregation = spec.Aggregation, Value = value,
     };
+
+    // ── Calculated KPI (formula over named measures) ─────────────────────────
+    private async Task<WidgetDataResult> ExecuteFormulaScalarAsync(ResolvedObject obj, WidgetQuerySpec spec, List<WidgetFilterSpec> filters, CancellationToken ct)
+    {
+        if (spec.Measures.Count == 0 || string.IsNullOrWhiteSpace(spec.Formula))
+            throw Invalid("formula", "A calculated widget needs at least one measure and a formula.");
+
+        var table = TableRef(obj);
+        var measures = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
+        foreach (var m in spec.Measures)
+        {
+            if (string.IsNullOrWhiteSpace(m.Name)) throw Invalid("measure", "Each measure needs a name.");
+            var aggKind = ParseAggregation(m.Aggregation);
+            if (aggKind == AggKind.Percentage) throw Invalid("measure", "A measure cannot itself be a percentage/formula.");
+
+            var p = new Params();
+            var where = BaseWhere(obj, "t", p);
+            var merged = new List<WidgetFilterSpec>(filters);
+            merged.AddRange(m.Filters);
+            AppendFilters(where, obj, merged, "t", p);
+            var aggExpr = AggregateExpr(obj, aggKind, m.AggregationField, "t");
+            var v = await ScalarAsync($"SELECT {aggExpr} FROM {table} t {Where(where)}", p, ct);
+            measures[m.Name] = v is null or DBNull ? 0d : Convert.ToDouble(v);
+        }
+
+        double value;
+        try { value = WidgetFormulaEvaluator.Evaluate(spec.Formula!, measures); }
+        catch (HR.Domain.Engines.Finance.Expressions.ExpressionException ex) { throw Invalid("formula", $"Invalid formula: {ex.Message}"); }
+
+        return Scalar(obj, spec, value);
+    }
 
     // ── Series (charts) ──────────────────────────────────────────────────────
 

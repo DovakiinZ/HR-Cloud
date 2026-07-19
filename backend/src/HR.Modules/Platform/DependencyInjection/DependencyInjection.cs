@@ -65,14 +65,34 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.WidgetData.WidgetDataService>();
         services.AddScoped<HR.Modules.Platform.Services.WidgetData.IWidgetSuggestionService,
             HR.Modules.Platform.Services.WidgetData.WidgetSuggestionService>();
+        services.AddScoped<HR.Modules.Platform.Services.WidgetData.IWidgetExportService,
+            HR.Modules.Platform.Services.WidgetData.WidgetExportService>();
+        services.AddScoped<HR.Modules.Platform.Services.WidgetData.IMetricWidgetService,
+            HR.Modules.Platform.Services.WidgetData.MetricWidgetService>();
         services.AddScoped<HR.Modules.Platform.Services.Dashboards.IDashboardSeeder,
             HR.Modules.Platform.Services.Dashboards.DashboardSeeder>();
+
+        // Report schedule runner (background-safe export → stored file → email link)
+        services.AddScoped<HR.Modules.Platform.Services.Reports.IReportScheduleRunner,
+            HR.Modules.Platform.Services.Reports.ReportScheduleRunner>();
+
+        // Report Field Registry — permission-aware, code-defined field/subject catalog
+        services.AddScoped<HR.Application.Reports.Registry.IReportObjectIdResolver,
+            HR.Modules.Platform.Services.Reports.ReportObjectIdResolver>();
+        services.AddScoped<HR.Application.Reports.Registry.IReportFieldRegistry,
+            HR.Modules.Platform.Services.Reports.ReportFieldRegistryAdapter>();
+
+        // Semantic Catalog — permission-aware, code-defined object/metric catalog
+        services.AddScoped<HR.Application.SemanticCatalog.ISemanticCatalogProvider,
+            HR.Modules.Platform.Services.SemanticCatalog.CodeDefinedSemanticCatalog>();
 
         // Notification engine (bell + email queue) + document-expiry rule scanner
         services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
             HR.Modules.Platform.Services.Notifications.NotificationService>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IDocumentExpiryScanner,
             HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.IEmailQueueDrainer,
+            HR.Modules.Platform.Services.Notifications.EmailQueueDrainer>();
 
         // Completion Effects Engine — generic orchestrator + flags→intents factory + executor
         // registry. Executors are auto-discovered from this assembly (Leave/Expense/Loan executors

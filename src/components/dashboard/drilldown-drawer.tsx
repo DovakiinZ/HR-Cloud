@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { X, Loader2 } from "lucide-react";
-import { drilldownWidget } from "@/lib/api/dashboards";
+import { toast } from "sonner";
+import { drilldownWidget, exportDrilldown, WidgetExportFormat } from "@/lib/api/dashboards";
 import { WidgetDataResult, WidgetFilterSpec, WidgetQuerySpec } from "@/types/dashboard";
 
 interface DrilldownDrawerProps {
@@ -21,6 +22,18 @@ export function DrilldownDrawer({ open, title, spec, segmentKey, segmentLabel, d
   const [data, setData] = useState<WidgetDataResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExport = useCallback(async (format: WidgetExportFormat) => {
+    setExporting(true);
+    try {
+      await exportDrilldown(spec, segmentKey, format, dashboardFilters, title);
+    } catch {
+      toast.error("تعذر تصدير البيانات");
+    } finally {
+      setExporting(false);
+    }
+  }, [spec, segmentKey, dashboardFilters, title]);
 
   const load = useCallback(async (p: number) => {
     setLoading(true);
@@ -52,7 +65,30 @@ export function DrilldownDrawer({ open, title, spec, segmentKey, segmentLabel, d
             <h3 className="font-bold">{title}</h3>
             {segmentLabel && <p className="mt-0.5 text-xs text-muted-foreground">{segmentLabel}</p>}
           </div>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+          <div className="flex items-center gap-2">
+            <button
+              disabled={exporting || loading}
+              onClick={() => handleExport("excel")}
+              className="h-7 px-2.5 text-xs border border-border hover:bg-muted disabled:opacity-40"
+            >
+              تصدير Excel
+            </button>
+            <button
+              disabled={exporting || loading}
+              onClick={() => handleExport("pdf")}
+              className="h-7 px-2.5 text-xs border border-border hover:bg-muted disabled:opacity-40"
+            >
+              PDF
+            </button>
+            <button
+              disabled={exporting || loading}
+              onClick={() => handleExport("csv")}
+              className="h-7 px-2.5 text-xs border border-border hover:bg-muted disabled:opacity-40"
+            >
+              CSV
+            </button>
+            <button onClick={onClose} className="mr-1 text-muted-foreground hover:text-foreground"><X className="h-5 w-5" /></button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-auto p-2">

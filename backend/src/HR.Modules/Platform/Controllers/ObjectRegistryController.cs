@@ -14,7 +14,7 @@ namespace HR.Modules.Platform.Controllers;
 public class ObjectRegistryController : BaseApiController
 {
     [HttpGet]
-    [RequirePermission("Platform.Objects.View")]
+    [RequirePermission("Platform.Objects.View", "Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<List<ObjectDefinitionDto>>>> GetAll(CancellationToken ct)
     {
         var result = await Mediator.Send(new GetObjectDefinitionsQuery(), ct);
@@ -22,7 +22,7 @@ public class ObjectRegistryController : BaseApiController
     }
 
     [HttpGet("{code}")]
-    [RequirePermission("Platform.Objects.View")]
+    [RequirePermission("Platform.Objects.View", "Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<ObjectDefinitionDto>>> GetByCode(string code, CancellationToken ct)
     {
         var result = await Mediator.Send(new GetObjectDefinitionByCodeQuery(code), ct);
@@ -55,6 +55,16 @@ public class ObjectRegistryController : BaseApiController
         await Mediator.Send(new DeleteObjectDefinitionCommand(id), ct);
         return OkResponse("Object definition deleted");
     }
+
+    /// <summary>
+    /// Idempotent seed — registers the five main HR entities (Employee, AttendanceRecord,
+    /// PayrollPayslip, LeaveBalance, RequestInstance) as ObjectDefinition rows so the
+    /// report engine and field registry can target them.  Safe to call multiple times.
+    /// </summary>
+    [HttpPost("seed-reportable")]
+    [RequirePermission("Platform.Objects.Create")]
+    public async Task<ActionResult<ApiResponse<int>>> SeedReportable(CancellationToken ct)
+        => OkResponse(await Mediator.Send(new RegisterReportableObjectsCommand(), ct));
 
     // Field endpoints
     [HttpPost("{id:guid}/fields")]

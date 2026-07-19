@@ -19,7 +19,14 @@ public sealed record TabularDataset(
     IReadOnlyList<TabularColumn> Columns,
     IReadOnlyList<IReadOnlyDictionary<string, object?>> Rows);
 
-public sealed record ExportWriteOptions(char Delimiter = '\t', bool FixedWidth = false, bool IncludeHeader = true);
+public sealed record CompanyBranding(
+    string? NameAr, string? NameEn, byte[]? LogoBytes,
+    string? CommercialRegistration, string? VatNumber,
+    string? Phone, string? Email, string? Address);
+
+public sealed record ExportWriteOptions(
+    char Delimiter = '\t', bool FixedWidth = false, bool IncludeHeader = true,
+    CompanyBranding? Branding = null);
 
 /// <summary>Serializes a <see cref="TabularDataset"/> into one output format. DI-discovered by
 /// <see cref="Format"/> so callers pick a writer without knowing concrete types.</summary>

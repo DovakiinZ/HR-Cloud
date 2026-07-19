@@ -1,3 +1,4 @@
+using System.Text.Json.Serialization;
 using AutoMapper;
 using HR.Application.Common.Exceptions;
 using HR.Domain.Engines.Reports;
@@ -16,8 +17,8 @@ public record CreateReportCommand : IRequest<ReportDefinitionDto>
     public string NameEn { get; init; } = null!;
     public string NameAr { get; init; } = null!;
     public string? Description { get; init; }
-    public ReportType ReportType { get; init; }
-    public ReportScope Scope { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportType ReportType { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportScope Scope { get; init; }
     public Guid PrimaryObjectId { get; init; }
     public Guid? TemplateId { get; init; }
 }
@@ -28,8 +29,8 @@ public record UpdateReportCommand : IRequest<ReportDefinitionDto>
     public string NameEn { get; init; } = null!;
     public string NameAr { get; init; } = null!;
     public string? Description { get; init; }
-    public ReportType ReportType { get; init; }
-    public ReportScope Scope { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportType ReportType { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportScope Scope { get; init; }
 }
 
 public record DeleteReportCommand(Guid Id) : IRequest;
@@ -47,12 +48,12 @@ public record CloneReportCommand : IRequest<ReportDefinitionDto>
 public record AddReportFieldCommand : IRequest<ReportFieldDto>
 {
     public Guid ReportDefinitionId { get; init; }
-    public ReportFieldType FieldType { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportFieldType FieldType { get; init; }
     public Guid? ObjectDefinitionId { get; init; }
     public string FieldCode { get; init; } = null!;
     public string DisplayNameEn { get; init; } = null!;
     public string DisplayNameAr { get; init; } = null!;
-    public AggregationType? Aggregation { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public AggregationType? Aggregation { get; init; }
     public string? CalculationExpression { get; init; }
 
     /// <summary>Formula as authored (e.g. "ROUND(basicSalary * 0.09, 2)"). Compiled to
@@ -69,7 +70,7 @@ public record AddReportFilterCommand : IRequest<ReportFilterDto>
 {
     public Guid ReportDefinitionId { get; init; }
     public string FieldCode { get; init; } = null!;
-    public ReportFilterOperator Operator { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public ReportFilterOperator Operator { get; init; }
     public string? Value { get; init; }
     public string? ValueTo { get; init; }
     public string? LogicalOperator { get; init; }
@@ -91,7 +92,7 @@ public record AddReportSortingCommand : IRequest<ReportSortingDto>
 {
     public Guid ReportDefinitionId { get; init; }
     public string FieldCode { get; init; } = null!;
-    public SortDirection Direction { get; init; }
+    [JsonConverter(typeof(JsonStringEnumConverter))] public SortDirection Direction { get; init; }
     public int SortOrder { get; init; }
 }
 
@@ -104,6 +105,9 @@ public record AddReportScheduleCommand : IRequest<ReportScheduleDto>
     public string? CronExpression { get; init; }
     public ExportFormat ExportFormat { get; init; }
     public string Recipients { get; init; } = null!;
+    public int? TimeOfDayMinutes { get; init; }
+    public int? DayOfWeek { get; init; }
+    public int? DayOfMonth { get; init; }
 }
 
 public record DeleteReportScheduleCommand(Guid Id) : IRequest;
@@ -295,7 +299,19 @@ public class AddReportScheduleCommandHandler : IRequestHandler<AddReportSchedule
     public AddReportScheduleCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
     public async Task<ReportScheduleDto> Handle(AddReportScheduleCommand request, CancellationToken ct)
     {
-        var entity = new ReportSchedule { ReportDefinitionId = request.ReportDefinitionId, Frequency = request.Frequency, CronExpression = request.CronExpression, ExportFormat = request.ExportFormat, Recipients = request.Recipients, IsActive = true };
+        var entity = new ReportSchedule
+        {
+            ReportDefinitionId = request.ReportDefinitionId,
+            Frequency = request.Frequency,
+            CronExpression = request.CronExpression,
+            ExportFormat = request.ExportFormat,
+            Recipients = request.Recipients,
+            TimeOfDayMinutes = request.TimeOfDayMinutes,
+            DayOfWeek = request.DayOfWeek,
+            DayOfMonth = request.DayOfMonth,
+            IsActive = true,
+        };
+        entity.NextRunAt = HR.Modules.Platform.Services.Reports.ScheduleMath.ComputeNextRun(entity, DateTime.UtcNow);
         _context.Set<ReportSchedule>().Add(entity); await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportScheduleDto>(entity);
     }

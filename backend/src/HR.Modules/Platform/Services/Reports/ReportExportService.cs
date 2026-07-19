@@ -36,11 +36,28 @@ public sealed class ReportExportService : IReportExportService
 
         var result = await _exec.RunForExportAsync(reportId, parameters, ct);
         var dataset = ReportResultFlattener.Flatten(result, meta.NameEn);
-        var bytes = writer.Write(dataset);
+        var branding = await ExportBrandingLoader.LoadAsync(_db, ct);
+        var bytes = writer.Write(dataset, new ExportWriteOptions(Branding: branding));
 
         var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
         var safe = string.IsNullOrWhiteSpace(meta.Code) ? "report" : meta.Code;
         var fileName = $"{safe}-{stamp}.{writer.Extension}";
         return new ReportExportFile(bytes, writer.ContentType, fileName);
+    }
+
+    public async Task<ReportExportFile> ExportSifAsync(Guid reportId, CancellationToken ct)
+    {
+        await _access.EnsureCanReadAsync(reportId, ct);
+
+        var meta = await _db.Set<ReportDefinition>().Where(r => r.Id == reportId)
+            .Select(r => new { r.Code }).FirstOrDefaultAsync(ct)
+            ?? throw new NotFoundException("ReportDefinition", reportId);
+
+        var result = await _exec.RunForExportAsync(reportId, null, ct);
+        var bytes = SifReportExporter.Export(result); // throws ValidationException if WPS columns are missing
+
+        var stamp = DateTime.UtcNow.ToString("yyyyMMdd");
+        var safe = string.IsNullOrWhiteSpace(meta.Code) ? "report" : meta.Code;
+        return new ReportExportFile(bytes, "text/csv", $"{safe}-wps-sif-{stamp}.csv");
     }
 }

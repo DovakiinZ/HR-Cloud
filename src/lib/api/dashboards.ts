@@ -1,5 +1,7 @@
 // Data layer for the Dashboard Platform. Talks to the live Platform API.
-import { apiFetch } from "../api-client";
+import { apiFetch, API_BASE_URL } from "../api-client";
+import { getAccessToken } from "../auth-storage";
+import { toast } from "sonner";
 import {
   CatalogObject,
   CatalogField,
@@ -138,10 +140,28 @@ export const previewWidgetData = (spec: WidgetQuerySpec, dashboardFilters?: Widg
     body: { spec, dashboardFilters },
   });
 
+export const previewMetric = (
+  metricCode: string, filters: WidgetFilterSpec[], visualization?: string, dateGranularity?: string,
+) => apiFetch<WidgetDataResult>("/api/platform/dashboards/widget-data/preview-metric", {
+  method: "POST", body: { metricCode, filters, visualization, dateGranularity },
+});
+
+export const addWidgetFromMetric = (
+  dashboardId: string,
+  body: { metricCode: string; filters: WidgetFilterSpec[]; visualization?: string; dateGranularity?: string; titleAr: string; titleEn: string; layout?: { column: number; row: number; width: number; height: number } },
+) => apiFetch<DashboardWidget>(`/api/platform/dashboards/${dashboardId}/widgets/from-metric`, { method: "POST", body });
+
 export const executeWidget = (widgetId: string, dashboardFilters?: WidgetFilterSpec[]) =>
   apiFetch<WidgetDataResult>(`/api/platform/dashboards/widget-data/${widgetId}/execute`, {
     method: "POST",
     body: { dashboardFilters },
+  });
+
+// ── Formula validation (mirrors the reports client; safe to call as the user types) ──
+export const validateWidgetFormula = (formula: string) =>
+  apiFetch<{ isValid: boolean; error?: string | null }>("/api/platform/reports/validate-formula", {
+    method: "POST",
+    body: { formula },
   });
 
 export const drilldownWidget = (
@@ -155,3 +175,65 @@ export const drilldownWidget = (
     method: "POST",
     body: { spec, segmentKey, dashboardFilters, page, pageSize },
   });
+
+// ── Widget export (server-side Excel / PDF / CSV) ──
+export type WidgetExportFormat = "excel" | "pdf" | "csv";
+const WIDGET_EXT: Record<WidgetExportFormat, string> = { excel: "xlsx", pdf: "pdf", csv: "csv" };
+
+/** Download a widget's data as a real file (server-side Excel/PDF/CSV). Streams raw bytes. */
+export async function exportWidget(widgetId: string, format: WidgetExportFormat, fallbackName = "widget"): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/platform/dashboards/widget-data/${widgetId}/export?format=${format}`, {
+    method: "GET",
+    headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+  });
+  if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
+  if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير هذه الودجة"); throw new Error("Forbidden"); }
+  if (!res.ok) { toast.error("تعذر تصدير الودجة"); throw new Error(`Export failed (${res.status})`); }
+
+  let filename = `${fallbackName}-${new Date().toISOString().slice(0, 10)}.${WIDGET_EXT[format]}`;
+  const cd = res.headers.get("Content-Disposition");
+  const match = cd?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1].replace(/"/g, ""));
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** Download drill-down detail rows as a real file (server-side Excel/PDF/CSV). Mirrors exportWidget's blob-download mechanism. */
+export async function exportDrilldown(
+  spec: WidgetQuerySpec,
+  segmentKey: string | null,
+  format: WidgetExportFormat,
+  dashboardFilters?: WidgetFilterSpec[],
+  title = "details",
+): Promise<void> {
+  const token = getAccessToken();
+  const res = await fetch(`${API_BASE_URL}/api/platform/dashboards/widget-data/drilldown/export?format=${format}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ spec, segmentKey, dashboardFilters, title }),
+  });
+  if (res.status === 401) { toast.error("انتهت الجلسة. يرجى تسجيل الدخول من جديد"); throw new Error("Unauthorized"); }
+  if (res.status === 403) { toast.error("ليس لديك صلاحية لتصدير هذه البيانات"); throw new Error("Forbidden"); }
+  if (!res.ok) { toast.error("تعذر تصدير البيانات"); throw new Error(`Export failed (${res.status})`); }
+
+  let filename = `${title}-${new Date().toISOString().slice(0, 10)}.${WIDGET_EXT[format]}`;
+  const cd = res.headers.get("Content-Disposition");
+  const match = cd?.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i);
+  if (match?.[1]) filename = decodeURIComponent(match[1].replace(/"/g, ""));
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}

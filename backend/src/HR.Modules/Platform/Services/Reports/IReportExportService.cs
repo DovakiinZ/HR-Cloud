@@ -14,4 +14,5 @@ public interface IReportExportService
     /// <param name="parameters">Must match the on-screen run's parameter values, or the exported
     /// file silently disagrees with what the user was looking at.</param>
     Task<ReportExportFile> ExportAsync(Guid reportId, ExportFormat format, IReadOnlyDictionary<string, string?>? parameters, CancellationToken ct);
+    Task<ReportExportFile> ExportSifAsync(Guid reportId, CancellationToken ct);
 }

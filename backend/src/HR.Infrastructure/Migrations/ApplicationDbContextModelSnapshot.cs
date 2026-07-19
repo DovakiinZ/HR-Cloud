@@ -5578,6 +5578,9 @@ namespace HR.Infrastructure.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("AttachmentFileId")
+                        .HasColumnType("uuid");
+
                     b.Property<int>("Attempts")
                         .HasColumnType("integer");
 
@@ -6791,6 +6794,12 @@ namespace HR.Infrastructure.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)");
 
+                    b.Property<int?>("DayOfMonth")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("DayOfWeek")
+                        .HasColumnType("integer");
+
                     b.Property<int>("ExportFormat")
                         .HasColumnType("integer");
 
@@ -6812,6 +6821,9 @@ namespace HR.Infrastructure.Migrations
 
                     b.Property<Guid>("ReportDefinitionId")
                         .HasColumnType("uuid");
+
+                    b.Property<int?>("TimeOfDayMinutes")
+                        .HasColumnType("integer");
 
                     b.HasKey("Id");
 
