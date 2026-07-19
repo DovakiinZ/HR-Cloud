@@ -1,6 +1,7 @@
 using HR.Application.Reports.Registry;
 using HR.Application.SemanticCatalog;
 using HR.Application.SemanticCatalog.Contracts;
+using HR.Domain.Engines.MasterData;
 using HR.Modules.Platform.Services.Catalog;
 using Microsoft.Extensions.Logging;
 
@@ -151,9 +152,78 @@ public sealed class ReportFieldRegistryAdapter : IReportFieldRegistry
                         FormatPattern: null,
                         RequiredPermission: requiredPerm);
                 }
+                else if (IsMasterDataForeignKey(field.FieldCode))
+                {
+                    // ── Master-data FK (e.g. LeaveTypeId → MasterDataItem) ────
+                    // Leave types, nationalities, request types, payment methods … are rows in the
+                    // single generic MasterDataItem table, not their own entities — so the catalog's
+                    // entity-based reference detection can't resolve them and they'd otherwise render
+                    // as raw Guids. Join FK → MasterDataItem.Id and show its NameAr instead.
+                    const string mdiCode = "MasterDataItem";
+                    var mdiObj = catalog.GetObject(mdiCode);
+                    var mdiId = ids.ResolveId(mdiCode);
+                    if (mdiObj is null || mdiId is null)
+                    {
+                        Exclude(exclusions, exclusionKey,
+                            $"master-data target '{mdiCode}' not registered (run seed-reportable)");
+                        continue;
+                    }
+
+                    var mdDisplayCol = ReportRegistryHelpers.PickDisplayColumn(
+                        mdiObj.Fields.Select(f => f.Code).ToList());
+                    if (mdDisplayCol is null)
+                    {
+                        Exclude(exclusions, exclusionKey, $"'{mdiCode}' has no displayable columns");
+                        continue;
+                    }
+
+                    var mdRefName = StripTrailingId(field.FieldCode);
+                    var mdKey = $"{subject}.{ToCamel(mdRefName)}Name";
+                    if (!usedKeys.Add(mdKey))
+                    {
+                        Exclude(exclusions, exclusionKey, $"duplicate key '{mdKey}'");
+                        continue;
+                    }
+
+                    // Single FK→PK hop: the FK column on the subject's object → MasterDataItem.Id.
+                    var mdJoin = new[] { new ReportJoinStep(field.ObjectCode, mdiCode, field.FieldCode) };
+
+                    descriptor = new ReportFieldDescriptor(
+                        Key: mdKey,
+                        LabelAr: field.NameAr,
+                        LabelEn: field.NameEn,
+                        Subject: subject,
+                        Group: field.GroupCode,
+                        DataType: "Text",
+                        ObjectDefinitionId: mdiId.Value,
+                        ObjectCode: mdiCode,
+                        PropertyPath: mdDisplayCol,
+                        JoinPath: mdJoin,
+                        AllowedOperators: ReportRegistryHelpers.OperatorsFor("Text"),
+                        Filterable: true,
+                        Sortable: true,
+                        Groupable: true,
+                        Aggregatable: false,
+                        DefaultAggregation: null,
+                        IsDefault: field.DefaultVisible,
+                        DisplayOrder: 0,
+                        FormatPattern: null,
+                        RequiredPermission: requiredPerm);
+                }
                 else
                 {
                     // ── Own (non-reference) field ─────────────────────────────
+                    // General guarantee: never surface a raw Guid identifier. If a field is a bare
+                    // Guid here it means it's an unresolved reference (no entity, not a known
+                    // master-data type) — showing it would print a code like "8d8258fa-…" instead of
+                    // real data, so exclude it rather than mislead the user.
+                    if (string.Equals(liveField.FieldType, "Guid", StringComparison.OrdinalIgnoreCase))
+                    {
+                        Exclude(exclusions, exclusionKey,
+                            $"'{field.FieldCode}' is an unresolved identifier (Guid) — hidden from reports");
+                        continue;
+                    }
+
                     var key = $"{subject}.{ToCamel(field.FieldCode)}";
                     if (!usedKeys.Add(key))
                     {
@@ -333,6 +403,13 @@ public sealed class ReportFieldRegistryAdapter : IReportFieldRegistry
         failed = true;
         return Array.Empty<ReportJoinStep>();
     }
+
+    /// <summary>True when a field code is a "<Type>Id" FK to a known master-data object type
+    /// (LeaveType, Nationality, RequestType, PaymentMethod, …) that has no dedicated entity.</summary>
+    private static bool IsMasterDataForeignKey(string fieldCode)
+        => fieldCode.EndsWith("Id", StringComparison.OrdinalIgnoreCase)
+           && fieldCode.Length > 2
+           && MasterDataObjectType.IsValid(fieldCode[..^2]);
 
     /// <summary>Strip a trailing "Id" suffix (case-insensitive) from a field code.</summary>
     private static string StripTrailingId(string code)

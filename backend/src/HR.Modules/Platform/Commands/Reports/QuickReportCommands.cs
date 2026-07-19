@@ -211,19 +211,34 @@ public class SeedSystemReportsCommandHandler : IRequestHandler<SeedSystemReports
         var created = new List<string>();
         var skipped = 0;
 
-        var existingCodes = await _context.Set<ReportDefinition>()
-            .Select(r => r.Code)
-            .Where(c => c.StartsWith("SYS_"))
+        // Regenerate: hard-remove existing SYS_* reports (+ their children) so re-running the seed
+        // picks up registry improvements (e.g. leave-type now shows its name, not a Guid). These are
+        // auto-generated standard reports — the user's own reports (QR_/custom codes) are untouched.
+        var old = await _context.Set<ReportDefinition>()
+            .IgnoreQueryFilters()
+            .Include(r => r.Fields).Include(r => r.Relationships).Include(r => r.Filters)
+            .Include(r => r.Groupings).Include(r => r.Sortings)
+            .Where(r => r.TenantId == _user.TenantId && r.Code.StartsWith("SYS_"))
             .ToListAsync(ct);
-        var existing = new HashSet<string>(existingCodes, StringComparer.OrdinalIgnoreCase);
+        if (old.Count > 0)
+        {
+            _context.Set<ReportDefinition>().RemoveRange(old);
+            await _context.SaveChangesAsync(ct);
+        }
 
         foreach (var subject in _registry.GetSubjects(ctx))
         {
             var code = $"SYS_{subject.Key.ToUpperInvariant()}";
-            if (existing.Contains(code)) { skipped++; continue; }
-
-            var keys = SelectStandardColumns(_registry.GetFields(ctx, subject.Key));
+            var fields = _registry.GetFields(ctx, subject.Key);
+            var keys = SelectStandardColumns(fields);
             if (keys.Count == 0) { skipped++; continue; }
+
+            // Give every standard report a from/to date parameter on its main date field, so users
+            // can scope it to a period at run time (the viewer renders parameterized filters).
+            var filters = new List<QuickFilterInput>();
+            var dateKey = SelectDateParam(fields);
+            if (dateKey is not null)
+                filters.Add(new QuickFilterInput(dateKey, "Between", null, null, IsParameter: true));
 
             try
             {
@@ -235,6 +250,7 @@ public class SeedSystemReportsCommandHandler : IRequestHandler<SeedSystemReports
                     Description = "تقرير قياسي تم إنشاؤه تلقائيًا. يمكنك نسخه وتخصيصه.",
                     Scope = ReportScope.Company,
                     FieldKeys = keys,
+                    Filters = filters,
                     Publish = true,
                 }, ct);
                 created.Add(result.Report.Code);
@@ -248,6 +264,14 @@ public class SeedSystemReportsCommandHandler : IRequestHandler<SeedSystemReports
 
         return new SeedSystemReportsResult(created.Count, skipped, created);
     }
+
+    /// <summary>The first own (primary-object) date field of a subject — used for the from/to
+    /// runtime parameter. Returns null when the subject has no date field (e.g. leave balances).</summary>
+    private static string? SelectDateParam(IReadOnlyList<ReportFieldDescriptor> fields)
+        => fields.FirstOrDefault(f =>
+                f.JoinPath.Count == 0 &&
+                (string.Equals(f.DataType, "Date", StringComparison.OrdinalIgnoreCase) ||
+                 string.Equals(f.DataType, "DateTime", StringComparison.OrdinalIgnoreCase)))?.Key;
 
     /// <summary>Pick a sensible, collision-free column set for a subject: default-visible fields
     /// first (falling back to the first fields), excluding the self-referential manager field

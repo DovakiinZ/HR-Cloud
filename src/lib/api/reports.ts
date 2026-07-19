@@ -700,3 +700,11 @@ export interface SeedSystemReportsResult {
 
 export const seedSystemReports = () =>
   apiFetch<SeedSystemReportsResult>("/api/platform/reports/seed-system", { method: "POST" });
+
+/**
+ * Register the main HR entities + the generic MasterDataItem table as reportable ObjectDefinitions.
+ * Idempotent. Must run once (per tenant) before master-data references (leave type, nationality,
+ * request type, …) resolve to their real names instead of Guids. Returns the number newly added.
+ */
+export const seedReportableObjects = () =>
+  apiFetch<number>("/api/platform/objects/seed-reportable", { method: "POST" });

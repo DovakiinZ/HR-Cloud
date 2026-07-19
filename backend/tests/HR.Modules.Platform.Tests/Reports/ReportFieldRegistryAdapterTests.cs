@@ -457,4 +457,66 @@ public class ReportFieldRegistryAdapterTests
         var ctxBoth = Factories.CtxWithPerms("Employees.View", "Payroll.View");
         registry.GetSubjects(ctxBoth).Should().HaveCount(2);
     }
+
+    // ── 12. Master-data FK (LeaveTypeId) → MasterDataItem name, not a Guid ─────
+
+    [Fact]
+    public void Master_data_fk_resolves_to_MasterDataItem_name()
+    {
+        var leaveBalId = Guid.NewGuid();
+        var mdiId = Guid.NewGuid();
+
+        var domain = Factories.Domain("leaves");
+        // LeaveTypeId is a plain (non-reference) column in the catalog — leave types live in the
+        // generic MasterDataItem table, so there is no "LeaveType" entity for the catalog to link.
+        var leaveObj = Factories.Obj("LeaveBalance", "leaves",
+            Factories.OwnField("LeaveBalance", "LeaveTypeId", "نوع الإجازة", "Leave Type"));
+
+        var semantic = new FakeSemanticProvider(new[] { domain }, new[] { leaveObj });
+        var catalog = new FakeCatalog(
+            Factories.CatalogObj("LeaveBalance", Factories.TextField("LeaveTypeId")),
+            Factories.CatalogObj("MasterDataItem", Factories.TextField("Id"), Factories.TextField("NameAr")));
+        var ids = new FakeIdResolver(("LeaveBalance", leaveBalId), ("MasterDataItem", mdiId));
+
+        var registry = Factories.BuildAdapter(semantic, catalog, ids);
+        var ctx = Factories.CtxWithPerms("Leaves.View");
+
+        var f = registry.GetField(ctx, "leaves.leaveTypeName");
+        f.Should().NotBeNull("a master-data FK should surface as a joined name, not a Guid column");
+        f!.ObjectCode.Should().Be("MasterDataItem");
+        f.ObjectDefinitionId.Should().Be(mdiId);
+        f.PropertyPath.Should().Be("NameAr");
+        f.LabelAr.Should().Be("نوع الإجازة");
+        f.JoinPath.Should().ContainSingle();
+        f.JoinPath[0].SourceObjectCode.Should().Be("LeaveBalance");
+        f.JoinPath[0].TargetObjectCode.Should().Be("MasterDataItem");
+        f.JoinPath[0].JoinField.Should().Be("LeaveTypeId");
+
+        // The raw "leaves.leaveTypeId" own-field key must NOT exist (no Guid column leaks through).
+        registry.GetField(ctx, "leaves.leaveTypeId").Should().BeNull();
+    }
+
+    // ── 13. An unresolved raw Guid field is hidden, never shown as a code ──────
+
+    [Fact]
+    public void Unresolved_guid_field_is_excluded()
+    {
+        var empId = Guid.NewGuid();
+        var domain = Factories.Domain("employees");
+        // "WidgetId" is neither an entity FK nor a known master-data type → a bare Guid.
+        var empObj = Factories.Obj("Employee", "employees",
+            Factories.OwnField("Employee", "WidgetId", "معرّف", "Widget"));
+
+        var semantic = new FakeSemanticProvider(new[] { domain }, new[] { empObj });
+        var catalog = new FakeCatalog(
+            Factories.CatalogObj("Employee",
+                new CatalogFieldDto { Code = "WidgetId", NameEn = "Widget", NameAr = "معرّف", FieldType = "Guid" }));
+        var ids = new FakeIdResolver(("Employee", empId));
+
+        var registry = Factories.BuildAdapter(semantic, catalog, ids);
+        var ctx = Factories.CtxWithPerms("Employees.View");
+
+        registry.GetFields(ctx, "employees").Should().BeEmpty("a raw Guid identifier must never be a report column");
+        registry.GetHealth().Exclusions.Should().Contain(e => e.Reason.Contains("unresolved identifier"));
+    }
 }

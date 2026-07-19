@@ -25,6 +25,10 @@ public sealed class RegisterReportableObjectsCommandHandler
         "PayrollPayslip",
         "LeaveBalance",
         "RequestInstance",
+        // The single generic master-data table. Every "<Type>Id" FK to a MasterDataObjectType
+        // (LeaveType, Nationality, RequestType, PaymentMethod, …) joins here to show its real
+        // NameAr instead of the raw Guid — so it must be a targetable ObjectDefinition.
+        "MasterDataItem",
     };
 
     private readonly ApplicationDbContext _db;

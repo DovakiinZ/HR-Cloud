@@ -181,10 +181,10 @@ public class QuickReportCommandTests
     }
 
     [Fact]
-    public async Task Seed_system_reports_is_idempotent()
+    public async Task Seed_system_reports_regenerates_without_duplicating()
     {
         var user = new FakeUser();
-        await using var db = Ctx(nameof(Seed_system_reports_is_idempotent), user);
+        await using var db = Ctx(nameof(Seed_system_reports_regenerates_without_duplicating), user);
         var ids = new FakeIds(("Employee", Emp), ("Department", Dept));
         var registry = EmployeesRegistry();
         var quick = new CreateQuickReportCommandHandler(db, Mapper(), registry, ids, user);
@@ -196,10 +196,10 @@ public class QuickReportCommandTests
         first.Created.Should().Be(1);
         first.Codes.Should().ContainSingle().Which.Should().Be("SYS_EMPLOYEES");
 
+        // Re-running regenerates (so registry fixes take effect) but never duplicates.
         var second = await seed.Handle(new SeedSystemReportsCommand(), CancellationToken.None);
-        second.Created.Should().Be(0, "the standard report already exists");
-        second.Skipped.Should().Be(1);
+        second.Created.Should().Be(1, "standard reports are regenerated on each seed");
 
-        (await db.Set<ReportDefinition>().CountAsync()).Should().Be(1, "no duplicate standard reports");
+        (await db.Set<ReportDefinition>().CountAsync()).Should().Be(1, "old SYS_* report was replaced, not duplicated");
     }
 }

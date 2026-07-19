@@ -8,7 +8,7 @@ import { usePermission } from "@/lib/permissions";
 import {
   getReports, exportReport, getReportFolders, getReportTags, getReportShares,
   toggleReportFavorite, toggleReportPin, setReportFolder, assignReportTag, unassignReportTag,
-  seedSystemReports,
+  seedSystemReports, seedReportableObjects,
   ReportDefinition, ExportFormat, ReportFolder, ReportTag, ReportShare,
 } from "@/lib/api/reports";
 import { ReportsSidebar } from "@/components/reports/reports-sidebar";
@@ -82,8 +82,11 @@ export default function ReportsPage() {
   const seedStandard = async () => {
     setSeeding(true);
     try {
+      // Ensure the reportable objects (incl. the master-data table) are registered first, so leave
+      // types / nationalities / request types resolve to real names — then (re)generate the reports.
+      await seedReportableObjects().catch(() => {});
       const res = await seedSystemReports();
-      toast.success(res.created > 0 ? `تم إنشاء ${res.created} تقرير أساسي` : "التقارير الأساسية موجودة بالفعل");
+      toast.success(res.created > 0 ? `تم تجهيز ${res.created} تقرير أساسي` : "لا توجد مواضيع متاحة");
       await fetchReports();
     } catch { toast.error("تعذر إنشاء التقارير الأساسية"); }
     finally { setSeeding(false); }

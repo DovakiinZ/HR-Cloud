@@ -26,7 +26,7 @@ file sealed class FakeUser : ICurrentUserService
 file sealed class FakeObjectCatalogService : IObjectCatalogService
 {
     private static readonly string[] KnownCodes =
-        { "Employee", "AttendanceRecord", "PayrollPayslip", "LeaveBalance", "RequestInstance" };
+        { "Employee", "AttendanceRecord", "PayrollPayslip", "LeaveBalance", "RequestInstance", "MasterDataItem" };
 
     public IReadOnlyList<CatalogObjectDto> GetCatalog()
         => KnownCodes.Select(MakeDto).ToList();
@@ -65,6 +65,7 @@ file sealed class FakeObjectCatalogService : IObjectCatalogService
         "PayrollPayslip"   => "PayrollPayslips",
         "LeaveBalance"     => "LeaveBalances",
         "RequestInstance"  => "RequestInstances",
+        "MasterDataItem"   => "MasterDataItems",
         _                  => code + "s",
     };
 
@@ -143,10 +144,10 @@ public class RegisterReportableObjectsCommandHandlerTests
 
         var count = await handler.Handle(new RegisterReportableObjectsCommand(), CancellationToken.None);
 
-        count.Should().Be(5);
+        count.Should().Be(6);
 
         var rows = await db.ObjectDefinitions.IgnoreQueryFilters().ToListAsync();
-        rows.Should().HaveCount(5);
+        rows.Should().HaveCount(6);
 
         var codes = rows.Select(r => r.Code).ToHashSet(StringComparer.OrdinalIgnoreCase);
         codes.Should().Contain("Employee");
@@ -154,6 +155,7 @@ public class RegisterReportableObjectsCommandHandlerTests
         codes.Should().Contain("PayrollPayslip");
         codes.Should().Contain("LeaveBalance");
         codes.Should().Contain("RequestInstance");
+        codes.Should().Contain("MasterDataItem");
     }
 
     // ── (b) idempotent — second call returns 0, no duplicates ─────────────────
@@ -169,11 +171,11 @@ public class RegisterReportableObjectsCommandHandlerTests
         var firstCount = await handler.Handle(new RegisterReportableObjectsCommand(), CancellationToken.None);
         var secondCount = await handler.Handle(new RegisterReportableObjectsCommand(), CancellationToken.None);
 
-        firstCount.Should().Be(5);
+        firstCount.Should().Be(6);
         secondCount.Should().Be(0, "all objects already registered — nothing to add");
 
         var rows = await db.ObjectDefinitions.IgnoreQueryFilters().ToListAsync();
-        rows.Should().HaveCount(5, "no duplicates created on second call");
+        rows.Should().HaveCount(6, "no duplicates created on second call");
     }
 
     // ── (c) unresolvable code is skipped; resolvable ones still register ───────
