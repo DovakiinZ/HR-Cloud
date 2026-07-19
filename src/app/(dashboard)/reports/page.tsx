@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { BarChart3, Download, FileSpreadsheet, FileText, FileType, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { usePermission } from "@/lib/permissions";
@@ -102,8 +103,12 @@ export default function ReportsPage() {
               {reports.map((r) => (
                 <tr key={r.id} className="border-b border-border/60 last:border-0 hover:bg-secondary/40">
                   <td className="px-4 py-3">
-                    <div className="font-medium">{r.nameAr || r.nameEn}</div>
-                    <div className="text-xs text-muted-foreground">{r.nameEn}{r.code ? ` · ${r.code}` : ""}</div>
+                    <Link href={`/reports/${r.id}`} className="group block">
+                      <div className="font-medium group-hover:text-primary group-hover:underline">
+                        {r.nameAr || r.nameEn}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{r.nameEn}{r.code ? ` · ${r.code}` : ""}</div>
+                    </Link>
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{r.reportType}</td>
                   <td className="px-4 py-3">
