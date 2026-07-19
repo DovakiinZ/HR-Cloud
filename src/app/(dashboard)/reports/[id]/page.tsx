@@ -9,7 +9,6 @@ import {
   FileText,
   FileType,
   Loader2,
-  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { AccessGuard } from "@/components/access/access-guard";
@@ -60,7 +59,6 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
 function Viewer({ id }: { id: string }) {
   const { has } = usePermissions();
   const canExport = has("Platform.Reports.Export");
-  const canEdit = has("Platform.Reports.Edit");
 
   const [definition, setDefinition] = useState<ReportDefinition | null>(null);
   const [fieldsByCode, setFieldsByCode] = useState<Map<string, CatalogField>>(new Map());
@@ -223,15 +221,11 @@ function Viewer({ id }: { id: string }) {
         </div>
 
         <div className="flex flex-wrap items-center gap-1.5">
-          {canEdit && (
-            <Link
-              href={`/reports/${id}/edit`}
-              className="inline-flex h-9 items-center gap-1.5 border border-border bg-secondary px-3 text-sm hover:bg-secondary/70"
-            >
-              <Pencil className="h-3.5 w-3.5" />
-              تعديل
-            </Link>
-          )}
+          {/*
+            No edit affordance yet. The builder is Task B4 and /reports/[id]/edit does not exist,
+            so rendering a link here would 404 for anyone holding Platform.Reports.Edit. Restore
+            this (gated on `canEdit`) when B4 lands.
+          */}
           {canExport &&
             FORMATS.map((f) => {
               const Icon = f.icon;
