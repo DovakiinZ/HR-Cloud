@@ -39,6 +39,7 @@ public class ReportExportServiceTests
         var empObjDef = new ObjectDefinition
         {
             Id = Guid.NewGuid(), Code = "Employee", NameEn = "Employee", NameAr = "موظف",
+            Module = "Employees",   // NOT NULL in engine_object_definitions
             TableName = "employees", IsActive = true,
         };
         db.Set<ObjectDefinition>().Add(empObjDef);
@@ -88,7 +89,10 @@ public class ReportExportServiceTests
         file.ContentType.Should().Be("text/csv");
         file.FileName.Should().EndWith(".csv");
         var text = System.Text.Encoding.UTF8.GetString(file.Content);
-        text.Should().Contain("Basic Salary");   // column header label
+        // Headers are Arabic: ReportObjectResolver sets ReportColumn.Label = DisplayNameAr and
+        // discards DisplayNameEn, so there is no English label on the run/export path at all.
+        text.Should().Contain("الراتب الأساسي");   // column header label
+        text.Should().Contain("5000");             // the data row
 
         await tx.RollbackAsync();
     }
