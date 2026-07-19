@@ -92,7 +92,7 @@ export function WidgetRenderer({ type, result, onSelect }: RendererProps) {
                 } : {})}
               >
                 {result.columns.map((c) => (
-                  <td key={c.code} className="px-2 py-1.5 whitespace-nowrap">{renderCell(row[c.code])}</td>
+                  <td key={c.code} className="px-2 py-1.5 whitespace-nowrap">{renderCell(row[c.code], c.type)}</td>
                 ))}
               </tr>
             ))}
@@ -169,10 +169,25 @@ function Leaderboard({ data, onSelect }: { data: SeriesPoint[]; onSelect: (p?: S
   );
 }
 
-function renderCell(v: unknown) {
+/**
+ * Grouped numbers ("1,234") are right for measures and wrong for anything a number merely
+ * encodes. Branching on `typeof v` cannot tell those apart, so a year grouped by "سنوي"
+ * rendered as "2,026" and an employee number as "1,001". The backend already types every
+ * column (TableColumn.type = FieldKind), so key the decision off that instead.
+ */
+const GROUPED_KINDS = new Set(["Decimal", "Currency", "Percentage"]);
+
+function renderCell(v: unknown, type?: string) {
   if (v === null || v === undefined) return <span className="text-muted-foreground">—</span>;
   if (typeof v === "boolean") return v ? "نعم" : "لا";
-  if (typeof v === "number") return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(v);
+  if (typeof v === "number") {
+    // Unknown type → ungrouped, matching drilldown-drawer's String() and erring toward the
+    // reading that is never actively wrong: a plain integer.
+    if (!type || !GROUPED_KINDS.has(type)) {
+      return new Intl.NumberFormat("en-US", { useGrouping: false, maximumFractionDigits: 2 }).format(v);
+    }
+    return new Intl.NumberFormat("en-US", { maximumFractionDigits: 2 }).format(v);
+  }
   return String(v);
 }
 

@@ -112,6 +112,45 @@ public sealed class ReportObjectResolver : IReportObjectResolver
                     "filtering on a joined object's field is not supported in R1.");
 
             var (value, valueTo) = ReportParameterBinder.Resolve(flt, parameters);
+
+            // An unfilled runtime parameter means "no constraint", not "match NULL". Without this a
+            // blank optional filter (an employee picker the user left empty) emits `col = NULL`, which
+            // matches no row and silently returns an empty report that looks like a real answer.
+            // Deliberately narrow: only a filter the author marked IsParameter, and only when neither a
+            // supplied value nor a stored default is present. A fixed filter, or a parameter with a
+            // default, keeps its predicate exactly as before.
+            if (flt.IsParameter && !NeedsNoValue(flt.Operator))
+            {
+                var hasValue = !string.IsNullOrWhiteSpace(value);
+                var hasValueTo = !string.IsNullOrWhiteSpace(valueTo);
+
+                if (flt.Operator == ReportFilterOperator.Between)
+                {
+                    // A half-open range is a real intent ("from March onwards"); BETWEEN with a NULL
+                    // bound is not — degrade it to the one-sided comparison the user actually asked for.
+                    if (!hasValue && !hasValueTo) continue;
+                    if (!hasValueTo)
+                    {
+                        query.Filters.Add(new ReportFilterModel
+                        {
+                            TableAlias = "t0", Field = rf,
+                            Operator = ReportFilterOperator.GreaterThanOrEqual, Value = value,
+                        });
+                        continue;
+                    }
+                    if (!hasValue)
+                    {
+                        query.Filters.Add(new ReportFilterModel
+                        {
+                            TableAlias = "t0", Field = rf,
+                            Operator = ReportFilterOperator.LessThanOrEqual, Value = valueTo,
+                        });
+                        continue;
+                    }
+                }
+                else if (!hasValue) continue;
+            }
+
             query.Filters.Add(new ReportFilterModel
             {
                 TableAlias = "t0", Field = rf, Operator = flt.Operator, Value = value, ValueTo = valueTo,
@@ -132,6 +171,10 @@ public sealed class ReportObjectResolver : IReportObjectResolver
 
         return model;
     }
+
+    /// <summary>Operators that are complete without an operand — a blank value is their normal state.</summary>
+    private static bool NeedsNoValue(ReportFilterOperator op)
+        => op is ReportFilterOperator.IsNull or ReportFilterOperator.IsNotNull;
 
     private static Expr ParseAst(string calculationExpression)
         => HR.Domain.Engines.Finance.Expressions.AstJson.Deserialize(calculationExpression);

@@ -34,7 +34,18 @@ public class ReportScheduleQueryTests
         var opts = new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(Conn).Options;
         await using var db = new ApplicationDbContext(opts, user);
         await using var tx = await db.Database.BeginTransactionAsync();
+        // The parent report must exist: engine_report_schedules.ReportDefinitionId is a real FK,
+        // so adding a schedule for a non-existent report fails on
+        // FK_engine_report_schedules_engine_report_definitions_ReportDefinitionId.
         var reportId = Guid.NewGuid();
+        db.Set<ReportDefinition>().Add(new ReportDefinition
+        {
+            Id = reportId, Code = "SCHED_TEST_" + reportId.ToString("N")[..8],
+            NameEn = "Scheduled Report", NameAr = "تقرير مجدول",
+            PrimaryObjectId = Guid.NewGuid(), IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
         db.Set<HR.Domain.Engines.Reports.ReportSchedule>().Add(new() { ReportDefinitionId = reportId, Frequency = HR.Domain.Enums.ReportScheduleFrequency.Daily, ExportFormat = HR.Domain.Enums.ExportFormat.Csv, Recipients = "[\"a@b.com\"]", IsActive = true });
         await db.SaveChangesAsync();
         var mapper = new AutoMapper.MapperConfiguration(c => c.AddProfile<HR.Modules.Platform.MappingProfiles.PlatformMappingProfile>()).CreateMapper();

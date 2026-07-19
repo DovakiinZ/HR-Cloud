@@ -9,6 +9,7 @@ using HR.Modules.Platform.Queries.Reports;
 using HR.Modules.Platform.Services.Reports;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace HR.Modules.Platform.Controllers;
 
@@ -26,6 +27,21 @@ public class ReportsController : BaseApiController
     }
 
     private ReportRegistryContext RegCtx => new(_user.Permissions);
+
+    /// <summary>Idempotently provision the seven named built-in reports (daily attendance, late,
+    /// absence, attendance summary, leave balance, payroll register, employee directory).
+    ///
+    /// Distinct from seed-system, which generates one generic SYS_&lt;subject&gt; report per registry
+    /// subject: these are specific named reports whose codes never collide with SYS_*, so both
+    /// seeders can run against the same tenant. Existing reports are left untouched either way.</summary>
+    [HttpPost("seed-defaults")]
+    [RequirePermission("Platform.Reports.Create")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<ReportSeedOutcome>>>> SeedDefaults(CancellationToken ct)
+    {
+        var seeder = HttpContext.RequestServices.GetRequiredService<IReportSeeder>();
+        var outcomes = await seeder.SeedDefaultsAsync(ct);
+        return OkResponse(outcomes, "Default reports ready");
+    }
 
     [HttpGet]
     [RequirePermission("Platform.Reports.View")]

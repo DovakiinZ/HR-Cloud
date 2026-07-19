@@ -1,11 +1,15 @@
 "use client";
 
 import { ReportResult, ReportColumn, ReportGroup } from "@/lib/api/reports";
+import { formatValue, formatAggregate } from "./report-cell";
 
-function fmt(v: unknown): string {
-  if (v === null || v === undefined) return "";
-  if (typeof v === "number") return v.toLocaleString();
-  return String(v);
+/**
+ * Cell text for a column. Driven by ReportColumn.type (the backend FieldKind), never by the JS
+ * runtime type: `typeof v === "number" → toLocaleString()` grouped every number, so a year 2026
+ * rendered as "2,026" and an employee number 1001 as "1,001".
+ */
+function fmt(v: unknown, column: ReportColumn): string {
+  return formatValue(v, column.type, column.formatPattern) ?? "";
 }
 
 function GroupRows({ group, columns, depth }: { group: ReportGroup; columns: ReportColumn[]; depth: number }) {
@@ -21,14 +25,14 @@ function GroupRows({ group, columns, depth }: { group: ReportGroup; columns: Rep
         : group.rows.map((row, i) => (
             <tr key={i} className="border-b border-border/60">
               {columns.map((c) => (
-                <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>{fmt(row[c.code])}</td>
+                <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>{fmt(row[c.code], c)}</td>
               ))}
             </tr>
           ))}
       <tr className="border-b border-border bg-secondary/30 text-sm font-medium">
         {columns.map((c, idx) => (
           <td key={c.code} className={`px-4 py-1.5 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>
-            {idx === 0 ? `${group.label} — إجمالي` : c.isMeasure ? fmt(group.aggregates?.[c.code]) : ""}
+            {idx === 0 ? `${group.label} — إجمالي` : c.isMeasure ? formatAggregate(group.aggregates?.[c.code], c) : ""}
           </td>
         ))}
       </tr>
@@ -55,7 +59,7 @@ export function ReportTable({ result }: { result: ReportResult }) {
             : result.rows.map((row, i) => (
                 <tr key={i} className="border-b border-border/60 hover:bg-secondary/40">
                   {cols.map((c) => (
-                    <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>{fmt(row[c.code])}</td>
+                    <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>{fmt(row[c.code], c)}</td>
                   ))}
                 </tr>
               ))}
@@ -63,7 +67,7 @@ export function ReportTable({ result }: { result: ReportResult }) {
             <tr className="border-t-2 border-border bg-secondary/50 font-semibold">
               {cols.map((c, idx) => (
                 <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>
-                  {idx === 0 ? "الإجمالي العام" : c.isMeasure ? fmt(result.grandTotals[c.code]) : ""}
+                  {idx === 0 ? "الإجمالي العام" : c.isMeasure ? formatAggregate(result.grandTotals[c.code], c) : ""}
                 </td>
               ))}
             </tr>

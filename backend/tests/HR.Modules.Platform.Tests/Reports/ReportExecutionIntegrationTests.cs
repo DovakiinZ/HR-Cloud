@@ -69,6 +69,7 @@ public class ReportExecutionIntegrationTests
             Code = "Employee",
             NameEn = "Employee",
             NameAr = "موظف",
+            Module = "Employees",   // NOT NULL in engine_object_definitions
             TableName = "employees",
             IsActive = true,
         };
@@ -78,6 +79,7 @@ public class ReportExecutionIntegrationTests
             Code = "Department",
             NameEn = "Department",
             NameAr = "قسم",
+            Module = "Core",        // NOT NULL in engine_object_definitions
             TableName = "departments",
             IsActive = true,
         };

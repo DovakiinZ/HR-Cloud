@@ -17,8 +17,25 @@ public static class ReportSqlBuilder
         var ps = new List<object?>();
         string P(object? v) { ps.Add(v ?? DBNull.Value); return "@p" + (ps.Count - 1); }
 
-        // SELECT
-        var select = string.Join(", ", model.Columns.Select(c => $"{c.TableAlias}.{Q(c.Field.ColumnName)} AS {Q(c.OutputCode)}"));
+        // SELECT — a reference (FK) column resolves to the principal's display text via an
+        // auto LEFT JOIN, so a report shows "إجازة سنوية" / "أحمد الغامدي" rather than a raw
+        // GUID. Filters and sorts still target the underlying FK column, so this is display-only.
+        // The display join carries no tenant predicate, matching WidgetDataService: it matches on
+        // primary key against a row already inside the tenant-scoped result, so it cannot widen scope.
+        var selects = new List<string>(model.Columns.Count);
+        var displayJoins = new List<string>();
+        foreach (var c in model.Columns)
+        {
+            if (c.Field.Reference is { } r)
+            {
+                var da = "d" + displayJoins.Count;
+                displayJoins.Add($" LEFT JOIN {Ref(r.PrincipalSchema, r.PrincipalTable)} {da}"
+                    + $" ON {da}.{Q(r.PrincipalKeyColumn)} = {c.TableAlias}.{Q(c.Field.ColumnName)}");
+                selects.Add($"{DisplayExpr(r, da)} AS {Q(c.OutputCode)}");
+            }
+            else selects.Add($"{c.TableAlias}.{Q(c.Field.ColumnName)} AS {Q(c.OutputCode)}");
+        }
+        var select = string.Join(", ", selects);
         if (string.IsNullOrEmpty(select)) select = $"{model.PrimaryAlias}.{Q(model.Primary.KeyColumn)}";
 
         // FROM + JOINs
@@ -36,6 +53,8 @@ public static class ReportSqlBuilder
             foreach (var pred in ScopePredicates(j.Target, j.Alias, tenantId, P))
                 sb.Append(" AND ").Append(pred);
         }
+        // Display joins last: they reference aliases established above (primary or a model join).
+        foreach (var dj in displayJoins) sb.Append(dj);
 
         // WHERE: tenant + soft-delete (primary) then filters
         var where = new List<string>(ScopePredicates(model.Primary, model.PrimaryAlias, tenantId, P));
@@ -118,6 +137,17 @@ public static class ReportSqlBuilder
         }
     }
 
-    private static string TableRef(ResolvedObject o) => o.Schema is { Length: > 0 } s ? $"{Q(s)}.{Q(o.TableName)}" : Q(o.TableName);
+    /// <summary>The human-readable expression for a referenced row. Mirrors WidgetDataService.DisplayExpr
+    /// so a field labels identically whether it is read through a widget or a report.</summary>
+    private static string DisplayExpr(ResolvedReference r, string alias)
+    {
+        if (r.DisplayColumn is { } d) return $"{alias}.{Q(d)}::text";
+        if (r.DisplayConcatColumns is { Length: > 0 } cc)
+            return "concat_ws(' ', " + string.Join(", ", cc.Select(c => $"{alias}.{Q(c)}")) + ")";
+        return $"{alias}.{Q(r.PrincipalKeyColumn)}::text";
+    }
+
+    private static string TableRef(ResolvedObject o) => Ref(o.Schema, o.TableName);
+    private static string Ref(string? schema, string table) => schema is { Length: > 0 } ? $"{Q(schema)}.{Q(table)}" : Q(table);
     private static string Q(string id) => "\"" + id.Replace("\"", "\"\"") + "\"";
 }

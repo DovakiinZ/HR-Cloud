@@ -4,6 +4,7 @@ using HR.Application.Common.Exceptions;
 using HR.Application.Common.Interfaces;
 using HR.Domain.Engines.Reports;
 using HR.Infrastructure.Persistence;
+using HR.Modules.Platform.Services.Catalog;
 using Microsoft.EntityFrameworkCore;
 
 namespace HR.Modules.Platform.Services.Reports;
@@ -68,7 +69,7 @@ public sealed class ReportExecutionService : IReportExecutionService
             foreach (var col in model.Query.Columns)
             {
                 var ord = reader.GetOrdinal(col.OutputCode);
-                row[col.OutputCode] = reader.IsDBNull(ord) ? null : reader.GetValue(ord);
+                row[col.OutputCode] = reader.IsDBNull(ord) ? null : Display(col, reader.GetValue(ord));
             }
             rows.Add(row);
         });
@@ -90,6 +91,20 @@ public sealed class ReportExecutionService : IReportExecutionService
             PageSize = pageSize,
             Truncated = truncated,
         });
+    }
+
+    /// <summary>
+    /// Turns a raw ADO value into what the report should show. Reference columns are already
+    /// resolved to display text in SQL; the remaining case is an enum, which Postgres hands back
+    /// as an int. Grouping and export both read these shaped values, so a status column reads
+    /// "Approved" in the grid, in a group header, and in the exported file alike.
+    /// </summary>
+    private static object? Display(ReportColumnModel col, object raw)
+    {
+        var t = Nullable.GetUnderlyingType(col.Field.ClrType) ?? col.Field.ClrType;
+        if (!t.IsEnum) return raw;
+        try { return Labels.EnumLabel(t, Enum.ToObject(t, raw)); }
+        catch { return raw; }   // value outside the enum's defined range — show the number
     }
 
     // ── ADO helpers (mirrors WidgetDataService pattern) ───────────────────────

@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Text;
+using HR.Domain.Engines.MasterData;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -110,7 +111,17 @@ public sealed class ObjectCatalogService : IObjectCatalogService
                 if (!col.EndsWith("Id", StringComparison.Ordinal) || col.Length <= 2) continue;
 
                 var targetName = ConventionTarget(col);
-                if (targetName is null || !nameIndex.TryGetValue(targetName, out var t)) continue;
+                if (targetName is null) continue;
+                // Most lookups are their own entity (DepartmentId → Department). The rest are rows in
+                // the shared MasterDataItems table discriminated by ObjectType (LeaveTypeId, JobTitleId,
+                // AllowanceTypeId, …) — there is no "LeaveType" CLR type to find, so without this the
+                // column stayed an unresolved GUID and reports printed the raw key. Matching on the
+                // principal key alone is sufficient: MasterDataItem ids are unique across ObjectTypes,
+                // so the discriminator is not needed to resolve one that is already known.
+                if (!nameIndex.TryGetValue(targetName, out var t)
+                    && !(MasterDataObjectType.All.Contains(targetName, StringComparer.OrdinalIgnoreCase)
+                         && nameIndex.TryGetValue(nameof(MasterDataItem), out t)))
+                    continue;
                 if (string.Equals(t.table, table, StringComparison.OrdinalIgnoreCase) && t.display is null && t.concat is null) continue;
                 fkByColumn[col] = new ResolvedReference
                 {

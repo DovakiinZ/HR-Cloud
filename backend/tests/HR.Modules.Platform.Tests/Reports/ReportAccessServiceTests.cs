@@ -38,7 +38,18 @@ public class ReportAccessServiceTests
         await using var db = new ApplicationDbContext(opts, user);
         await using var tx = await db.Database.BeginTransactionAsync();
 
+        // Both sides of the membership must exist first: user_roles has real FKs to users and
+        // roles, so adding the join row alone fails on FK_user_roles_users_UserId /
+        // FK_user_roles_roles_RoleId.
         var roleId = Guid.NewGuid();
+        db.Set<Role>().Add(new Role { Id = roleId, Name = "ReportViewer", NameAr = "عارض التقارير" });
+        db.Set<User>().Add(new User
+        {
+            Id = userId, Email = "caller@test.example.com", FullName = "Caller",
+            PasswordHash = "x", IsActive = true,
+        });
+        await db.SaveChangesAsync();
+
         db.UserRoles.Add(new UserRole { Id = Guid.NewGuid(), UserId = userId, RoleId = roleId });
         // Employee links this user to a department (Employee.UserId → DepartmentId).
         var deptId = Guid.NewGuid();
