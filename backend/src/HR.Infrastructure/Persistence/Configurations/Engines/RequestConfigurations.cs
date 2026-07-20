@@ -23,6 +23,22 @@ public class RequestTypeConfiguration : IEntityTypeConfiguration<RequestType>
     }
 }
 
+public class RequestEffectDefinitionConfiguration : IEntityTypeConfiguration<RequestEffectDefinition>
+{
+    public void Configure(EntityTypeBuilder<RequestEffectDefinition> builder)
+    {
+        builder.ToTable("engine_request_effect_definitions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.EffectType).HasMaxLength(200).IsRequired();
+        builder.Property(x => x.ConfigurationJson).HasColumnType("jsonb").IsRequired();
+        // The factory orders by (Sequence, Id) and filters on (RequestTypeId, Trigger, IsEnabled);
+        // this index matches that access path exactly.
+        builder.HasIndex(x => new { x.RequestTypeId, x.Trigger, x.Sequence });
+        builder.HasOne(x => x.RequestType).WithMany(x => x.Effects)
+            .HasForeignKey(x => x.RequestTypeId).OnDelete(DeleteBehavior.Cascade);
+    }
+}
+
 public class RequestImpactMappingConfiguration : IEntityTypeConfiguration<RequestImpactMapping>
 {
     public void Configure(EntityTypeBuilder<RequestImpactMapping> builder)

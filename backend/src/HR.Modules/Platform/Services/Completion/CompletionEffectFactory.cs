@@ -1,5 +1,7 @@
 using System.Text.Json;
+using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Completion;
+using HR.Domain.Enums;
 using HR.Domain.Engines.Requests;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.Services.Requests;
@@ -8,20 +10,33 @@ using Microsoft.EntityFrameworkCore;
 namespace HR.Modules.Platform.Services.Completion;
 
 /// <summary>
-/// Translates a request's declarative <see cref="RequestImpactMapping"/> (boolean flags) + form
-/// values + leave-type rules into the ordered list of completion-effect intents. This is the only
-/// place that understands the flag→effect mapping; the engine and executors stay generic.
+/// Builds the ordered list of completion-effect intents for a request.
+///
+/// Two sources, in priority order:
+///
+/// 1. <see cref="RequestEffectDefinition"/> — configured actions from the Effect Action Catalog,
+///    with their inputs resolved through <see cref="EffectValueResolver"/>. This is how every
+///    dynamic request type works.
+/// 2. <see cref="RequestImpactMapping"/> — the original boolean flags. Kept as a fallback for
+///    request types that have not been migrated to configured effects, so nothing that works today
+///    stops working. A type with any enabled definition uses only source 1: mixing them would run
+///    the leave effect twice.
+///
+/// The engine and executors stay generic — this is the only place that knows how a request type's
+/// configuration becomes an intent.
 /// </summary>
 public sealed class CompletionEffectFactory : ICompletionEffectFactory
 {
     private readonly ApplicationDbContext _db;
     private readonly ILeaveService _leave;
+    private readonly ICurrentUserService _user;
     private static readonly JsonSerializerOptions Json = new(); // member names as-written (camelCase)
 
-    public CompletionEffectFactory(ApplicationDbContext db, ILeaveService leave)
+    public CompletionEffectFactory(ApplicationDbContext db, ILeaveService leave, ICurrentUserService user)
     {
         _db = db;
         _leave = leave;
+        _user = user;
     }
 
     public async Task<IReadOnlyList<EffectIntent>> BuildAsync(Guid requestInstanceId, CancellationToken ct)
@@ -32,6 +47,11 @@ public sealed class CompletionEffectFactory : ICompletionEffectFactory
             ?? throw new InvalidOperationException($"RequestInstance {requestInstanceId} not found.");
 
         var type = instance.RequestType;
+
+        // Configured effects win outright when present.
+        var configured = await BuildFromDefinitionsAsync(instance, type, EffectTrigger.FinalApproval, ct);
+        if (configured.Count > 0) return configured;
+
         var impact = type.ImpactMapping;
         var intents = new List<EffectIntent>();
         if (impact is null) return intents;
@@ -125,6 +145,51 @@ public sealed class CompletionEffectFactory : ICompletionEffectFactory
                     reason = V("reason"),
                 })));
             }
+        }
+
+        return intents;
+    }
+
+    /// <summary>
+    /// Turns the request type's configured effects into intents for one trigger.
+    ///
+    /// Ordering is (Sequence, Id): Sequence is what the builder reorders, and Id breaks ties so two
+    /// effects sharing a sequence number still execute in a stable order rather than whatever the
+    /// database happens to return.
+    ///
+    /// Disabled effects are skipped. An effect whose action is no longer in the catalog is skipped
+    /// rather than thrown on — the request has already been approved, and failing completion because
+    /// a descriptor was retired would strand it in CompletionFailed. Activation-time validation is
+    /// where an unknown action is supposed to be caught.
+    /// </summary>
+    private async Task<List<EffectIntent>> BuildFromDefinitionsAsync(
+        RequestInstance instance, RequestType type, EffectTrigger trigger, CancellationToken ct)
+    {
+        var definitions = await _db.Set<RequestEffectDefinition>()
+            .Where(e => e.RequestTypeId == type.Id && e.Trigger == trigger && e.IsEnabled)
+            .OrderBy(e => e.Sequence).ThenBy(e => e.Id)
+            .ToListAsync(ct);
+
+        var intents = new List<EffectIntent>();
+        if (definitions.Count == 0) return intents;
+
+        var ctx = new EffectResolutionContext
+        {
+            Instance = instance,
+            RequestTypeCode = type.Code,
+            TenantId = instance.TenantId,
+            ActorUserId = _user.UserId,
+            FormValues = await LoadFormValuesAsync(instance.FormSubmissionId, ct),
+        };
+
+        var seq = 0;
+        foreach (var def in definitions)
+        {
+            var config = EffectConfiguration.TryParse(def.ConfigurationJson);
+            if (config is null) continue;   // malformed configuration: nothing safe to run
+
+            var payload = EffectValueResolver.Resolve(config, ctx);
+            intents.Add(new EffectIntent(def.EffectType, ++seq, Serialize(payload)));
         }
 
         return intents;

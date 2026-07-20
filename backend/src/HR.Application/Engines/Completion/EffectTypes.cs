@@ -17,4 +17,12 @@ public static class EffectTypes
     // Payroll-adjacent
     public const string ExpenseCreateClaim = "Expense.CreateClaim";
     public const string LoanCreate = "Loan.Create";
+
+    // Assets
+    public const string AssetsAssignCustody = "Assets.AssignCustody";
+
+    // Cross-cutting. Notification.Send is asynchronous: its executor only enqueues, so a mail
+    // transport being down can never roll back an approved leave.
+    public const string NotificationSend = "Notification.Send";
+    public const string TaskCreate = "Task.Create";
 }
