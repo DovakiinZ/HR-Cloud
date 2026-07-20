@@ -208,6 +208,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // Request Center Engine
     public DbSet<HR.Domain.Engines.Requests.RequestType> RequestTypes => Set<HR.Domain.Engines.Requests.RequestType>();
     public DbSet<HR.Domain.Engines.Requests.RequestImpactMapping> RequestImpactMappings => Set<HR.Domain.Engines.Requests.RequestImpactMapping>();
+    public DbSet<HR.Domain.Engines.Requests.RequestEffectDefinition> RequestEffectDefinitions => Set<HR.Domain.Engines.Requests.RequestEffectDefinition>();
     public DbSet<HR.Domain.Engines.Requests.RequestPermission> RequestPermissions => Set<HR.Domain.Engines.Requests.RequestPermission>();
     public DbSet<HR.Domain.Engines.Requests.RequestInstance> RequestInstances => Set<HR.Domain.Engines.Requests.RequestInstance>();
     public DbSet<HR.Domain.Engines.Requests.RequestApproval> RequestApprovals => Set<HR.Domain.Engines.Requests.RequestApproval>();

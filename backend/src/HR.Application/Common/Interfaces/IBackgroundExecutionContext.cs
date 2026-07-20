@@ -11,6 +11,11 @@ public interface IBackgroundExecutionContext
     Guid? UserId { get; }
     string? Email { get; }
 
+    /// <summary>Ties every write made inside a scope to the operation that caused it — one
+    /// provisioning run, one payroll batch — so an audit trail can be followed back across the
+    /// several services a single background operation touches.</summary>
+    Guid? CorrelationId { get; }
+
     /// <summary>Begin an ambient scope; dispose the returned handle to restore the previous scope.</summary>
-    IDisposable Begin(Guid tenantId, Guid? userId = null, string? email = null);
+    IDisposable Begin(Guid tenantId, Guid? userId = null, string? email = null, Guid? correlationId = null);
 }

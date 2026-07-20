@@ -1,4 +1,5 @@
 using HR.Application.Common.Exceptions;
+using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Permissions;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Identity.Entities;
@@ -14,14 +15,17 @@ public class AuthService
     private readonly JwtTokenService _jwtTokenService;
     private readonly IConfiguration _configuration;
     private readonly IPermissionResolver _permissionResolver;
+    private readonly IEnumerable<ITenantOnboardingHook> _onboardingHooks;
 
     public AuthService(ApplicationDbContext context, JwtTokenService jwtTokenService,
-        IConfiguration configuration, IPermissionResolver permissionResolver)
+        IConfiguration configuration, IPermissionResolver permissionResolver,
+        IEnumerable<ITenantOnboardingHook> onboardingHooks)
     {
         _context = context;
         _jwtTokenService = jwtTokenService;
         _configuration = configuration;
         _permissionResolver = permissionResolver;
+        _onboardingHooks = onboardingHooks;
     }
 
     public async Task<(string AccessToken, string RefreshToken, User User)> RegisterAsync(
@@ -85,6 +89,13 @@ public class AuthService
         });
 
         await _context.SaveChangesAsync(ct);
+
+        // Let each module provision what a new tenant needs from it — request types, forms,
+        // workflows. Runs after the tenant, admin user and permissions are committed, so a hook can
+        // safely reference them. Hooks are ordered and self-contained; a failing one logs and does
+        // not abort registration, since the account already exists by this point.
+        foreach (var hook in _onboardingHooks.OrderBy(h => h.Order))
+            await hook.OnTenantCreatedAsync(tenant.Id, user.Id, ct);
 
         // Generate tokens — resolve effective permissions through the unified resolver.
         var permissionNames = await _permissionResolver.ResolveAsync(user.Id, ct);

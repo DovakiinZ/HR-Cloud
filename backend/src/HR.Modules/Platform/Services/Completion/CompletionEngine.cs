@@ -134,7 +134,11 @@ public sealed class CompletionEngine : ICompletionEngine
                 }
                 sw.Stop();
 
-                effect.Status = CompletionEffectStatus.Completed;
+                // A skip is not a failure: the run continues and nothing rolls back. It is recorded
+                // distinctly so completion history shows "this did not happen, and why" rather than
+                // a success that quietly did nothing.
+                effect.Status = result.IsSkipped ? CompletionEffectStatus.Skipped : CompletionEffectStatus.Completed;
+                if (result.IsSkipped) effect.FailureReason = result.SkipReason;
                 effect.ExecutedAt = DateTime.UtcNow;
                 effect.DurationMs = (int)sw.ElapsedMilliseconds;
                 effect.ExecutorName = executor.GetType().Name;

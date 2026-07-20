@@ -94,6 +94,11 @@ public sealed class RequestSeeder : IRequestSeeder
             TrainingForm(), Impact(), "GraduationCap", "#A78BFA", ct);
         created += await EnsureRequest("EQUIPMENT_REQUEST", "طلب معدات", "Equipment Request", catHr, null, wfManager, null,
             EquipmentForm(), Impact(), "Laptop", "#38BDF8", ct);
+        // Custody: the dynamic-request example. Its behaviour comes entirely from a configured
+        // RequestEffectDefinition (Assets.AssignCustody), not from RequestImpactMapping flags —
+        // which is the point of it. Impact() is therefore all-false.
+        created += await EnsureRequest("CUSTODY_REQUEST", "طلب عهدة", "Custody Request", catHr, null, wfManager, null,
+            CustodyForm(), Impact(), "Package", "#22D3EE", ct);
         created += await EnsureRequest("COMPLAINT", "شكوى", "Complaint", catHr, null, wfHr, null,
             ComplaintForm(), Impact(), "MessageSquareWarning", "#FB7185", ct);
         created += await EnsureRequest("CONTRACT_RENEWAL", "تجديد عقد", "Contract Renewal", catHr, null, wfHr, null,
@@ -238,6 +243,10 @@ public sealed class RequestSeeder : IRequestSeeder
 
     /// <summary>Field options descriptor that tells the UI to load choices live from master data.</summary>
     private static string Lookup(string objectType) => $"{{\"lookup\":\"{objectType}\"}}";
+
+    /// <summary>An options descriptor pointing at a platform endpoint rather than master data, for
+    /// pickers whose source is a real entity feed. The path is relative to /api/platform/.</summary>
+    private static string EndpointLookup(string path) => $"{{\"endpoint\":\"{path}\"}}";
 
     private static WorkflowStepConfig Step(ApproverType type, string ar, string en)
         => new() { ApproverType = (int)type, NameAr = ar, NameEn = en };
@@ -429,6 +438,19 @@ public sealed class RequestSeeder : IRequestSeeder
     {
         F("newManager", "المدير الجديد", "New Manager", FieldType.Text, true),
         F("reason", "السبب", "Reason", FieldType.TextArea, true),
+    });
+
+    /// <summary>Asset, expected return date, notes — the three fields the custody example needs.
+    ///
+    /// The asset dropdown reads GET /api/platform/assets/assignable, not a master-data lookup.
+    /// MasterDataObjectType.AssetType lists asset *categories* ("Laptop", "Vehicle"), so binding the
+    /// picker to it would have offered a category where Assets.AssignCustody expects an asset id —
+    /// the effect would then fail at approval time on every custody request.</summary>
+    private static FormSpec CustodyForm() => new("FORM_CUSTODY_REQUEST", "نموذج طلب عهدة", "Custody Request Form", new()
+    {
+        F("assetId", "الأصل", "Asset", FieldType.Dropdown, true, options: EndpointLookup("assets/assignable")),
+        F("expectedReturnDate", "تاريخ الإرجاع المتوقع", "Expected Return Date", FieldType.Date, false),
+        F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
     });
 
     private static FieldSpec F(string code, string ar, string en, FieldType type, bool required, string? placeholder = null, string? options = null)

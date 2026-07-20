@@ -100,6 +100,12 @@ public static class DependencyInjection
         // registry. Executors are auto-discovered from this assembly (Leave/Expense/Loan executors
         // also live here today); other modules register their own.
         services.AddScoped<IEffectExecutorRegistry, EffectExecutorRegistry>();
+        // The trusted vocabulary the request builder may configure, plus the validator that keeps a
+        // request type from being activated into a state that would fail at approval time.
+        services.AddSingleton<HR.Application.Engines.Completion.IEffectActionCatalog,
+            HR.Modules.Platform.Services.Completion.EffectActionCatalog>();
+        services.AddScoped<HR.Modules.Platform.Services.Completion.IEffectConfigurationValidator,
+            HR.Modules.Platform.Services.Completion.EffectConfigurationValidator>();
         services.AddScoped<ICompletionEngine, HR.Modules.Platform.Services.Completion.CompletionEngine>();
         services.AddScoped<ICompletionEffectFactory, HR.Modules.Platform.Services.Completion.CompletionEffectFactory>();
         services.AddEffectExecutorsFromAssembly(Assembly.GetExecutingAssembly());
@@ -111,6 +117,17 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Requests.RequestEngine>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestTypeAdminService,
+            HR.Modules.Platform.Services.Requests.RequestTypeAdminService>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestEffectDefinitionService,
+            HR.Modules.Platform.Services.Requests.RequestEffectDefinitionService>();
+        services.AddScoped<HR.Modules.Platform.Services.Assets.IAssetLookupService,
+            HR.Modules.Platform.Services.Assets.AssetLookupService>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestProvisioningService,
+            HR.Modules.Platform.Services.Requests.RequestProvisioningService>();
+        // Registered as a hook so Identity can provision a new tenant without referencing Platform.
+        services.AddScoped<HR.Application.Common.Interfaces.ITenantOnboardingHook,
+            HR.Modules.Platform.Services.Requests.RequestProvisioningOnboardingHook>();
 
         // HR-managed leave records engine
         services.AddScoped<HR.Modules.Platform.Services.Leaves.ILeaveRecordService,
