@@ -117,6 +117,11 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Requests.RequestEngine>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestProvisioningService,
+            HR.Modules.Platform.Services.Requests.RequestProvisioningService>();
+        // Registered as a hook so Identity can provision a new tenant without referencing Platform.
+        services.AddScoped<HR.Application.Common.Interfaces.ITenantOnboardingHook,
+            HR.Modules.Platform.Services.Requests.RequestProvisioningOnboardingHook>();
 
         // HR-managed leave records engine
         services.AddScoped<HR.Modules.Platform.Services.Leaves.ILeaveRecordService,

@@ -78,6 +78,25 @@ public class RequestsController : BaseApiController
     }
 
     /// <summary>Idempotently provision the built-in system requests for this tenant.</summary>
+    /// <summary>
+    /// Bring this tenant's built-in request types up to the current seed version: create what is
+    /// missing, upgrade what is behind, touch nothing a tenant has customised.
+    ///
+    /// Idempotent and safe to re-run — this is also the recovery path when the onboarding hook
+    /// failed. Runs in its own tenant execution scope rather than relying on the caller's, so the
+    /// same code path serves onboarding, manual provisioning and background upgrades.
+    /// </summary>
+    [HttpPost("provision")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Create")]
+    public async Task<ActionResult<ApiResponse<RequestProvisioningResult>>> Provision(CancellationToken ct)
+    {
+        var svc = HttpContext.RequestServices.GetRequiredService<IRequestProvisioningService>();
+        var user = HttpContext.RequestServices.GetRequiredService<HR.Application.Common.Interfaces.ICurrentUserService>();
+        var result = await svc.ProvisionTenantAsync(user.TenantId, user.UserId, ct);
+        return OkResponse(result,
+            $"{result.Created} created, {result.Upgraded} upgraded, {result.AlreadyCurrent} already current");
+    }
+
     [HttpPost("seed-system")]
     [HR.Api.Filters.RequirePermission("Platform.MasterData.Create")]
     public async Task<ActionResult<ApiResponse<int>>> SeedSystem(CancellationToken ct)

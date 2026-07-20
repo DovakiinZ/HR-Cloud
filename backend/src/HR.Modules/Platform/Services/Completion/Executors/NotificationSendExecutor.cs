@@ -2,6 +2,7 @@ using HR.Application.Engines.Completion;
 using HR.Domain.Engines.Notifications;
 using HR.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace HR.Modules.Platform.Services.Completion.Executors;
 
@@ -22,8 +23,10 @@ namespace HR.Modules.Platform.Services.Completion.Executors;
 public sealed class NotificationSendExecutor : IEffectExecutor
 {
     private readonly ApplicationDbContext _db;
+    private readonly ILogger<NotificationSendExecutor> _log;
 
-    public NotificationSendExecutor(ApplicationDbContext db) => _db = db;
+    public NotificationSendExecutor(ApplicationDbContext db, ILogger<NotificationSendExecutor> log)
+    { _db = db; _log = log; }
 
     public string EffectType => EffectTypes.NotificationSend;
 
@@ -41,12 +44,23 @@ public sealed class NotificationSendExecutor : IEffectExecutor
 
         if (string.IsNullOrWhiteSpace(toEmail))
         {
-            // Deliberately not a throw. This effect is asynchronous by contract, and failing the
-            // completion transaction because an employee has no email on file would roll back the
-            // approval itself — exactly the coupling this execution mode exists to prevent.
-            return EffectExecutionResult.Ok(
+            // Deliberately not a throw: failing the completion transaction because an employee has
+            // no email on file would roll back the approval itself, which is the coupling this
+            // execution mode exists to prevent.
+            //
+            // Equally deliberately not a silent success. Nothing is enqueued — an EmailNotificationQueue
+            // row with an empty ToEmail would sit Pending, be retried five times and then be marked
+            // Failed by the drainer, turning a configuration problem into recurring noise. The effect
+            // is recorded as Skipped with a stable reason, visible in completion history.
+            _log.LogWarning(
+                "Notification.Send skipped for request {RequestNumber} ({RequestInstanceId}): {Reason}. " +
+                "No 'toEmail' mapping and employee {EmployeeId} has no email address.",
+                ctx.RequestNumber, ctx.RequestInstanceId, EffectSkipReasons.RecipientNotResolved, ctx.EmployeeId);
+
+            return EffectExecutionResult.Skip(
+                EffectSkipReasons.RecipientNotResolved,
                 targetEntityType: "EmailNotificationQueue",
-                summary: "Skipped: no recipient address could be resolved.");
+                summary: "No recipient address could be resolved; nothing was queued.");
         }
 
         var queued = new EmailNotificationQueue

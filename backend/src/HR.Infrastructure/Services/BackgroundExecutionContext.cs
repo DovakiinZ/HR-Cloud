@@ -7,7 +7,7 @@ namespace HR.Infrastructure.Services;
 /// own tenant scope. Scopes nest and restore on dispose.</summary>
 public sealed class BackgroundExecutionContext : IBackgroundExecutionContext
 {
-    private sealed record Scope(Guid TenantId, Guid? UserId, string? Email);
+    private sealed record Scope(Guid TenantId, Guid? UserId, string? Email, Guid? CorrelationId);
 
     private static readonly AsyncLocal<Scope?> Current = new();
 
@@ -15,11 +15,14 @@ public sealed class BackgroundExecutionContext : IBackgroundExecutionContext
     public Guid TenantId => Current.Value?.TenantId ?? Guid.Empty;
     public Guid? UserId => Current.Value?.UserId;
     public string? Email => Current.Value?.Email;
+    public Guid? CorrelationId => Current.Value?.CorrelationId;
 
-    public IDisposable Begin(Guid tenantId, Guid? userId = null, string? email = null)
+    public IDisposable Begin(Guid tenantId, Guid? userId = null, string? email = null, Guid? correlationId = null)
     {
         var previous = Current.Value;
-        Current.Value = new Scope(tenantId, userId, email);
+        // A nested scope inherits the outer correlation id unless it sets its own, so provisioning
+        // called from inside onboarding stays attributable to the same operation.
+        Current.Value = new Scope(tenantId, userId, email, correlationId ?? previous?.CorrelationId);
         return new Restore(previous);
     }
 
