@@ -7,6 +7,7 @@
 #   ./scripts/reports-e2e.sh seed      # (re)run the report seeders against it
 #   ./scripts/reports-e2e.sh token     # print the access token (for curl / localStorage)
 #   ./scripts/reports-e2e.sh test      # run the Platform suite against the same database
+#   ./scripts/reports-e2e.sh backfill  # dry-run the ownerless-report backfill (--apply to write)
 #   ./scripts/reports-e2e.sh down      # stop everything and delete the cluster + credentials
 #
 # Nothing here touches Azure or any shared database. See docs/local-e2e-reports.md for the
@@ -154,6 +155,58 @@ cmd_seed() {
 # ── token ────────────────────────────────────────────────────────────────────
 cmd_token() { [ -f "$WORK/token.txt" ] || die "no token — run 'up' first"; cat "$WORK/token.txt"; echo; }
 
+# ── backfill ─────────────────────────────────────────────────────────────────
+# Shows exactly what the ownerless-report backfill would do. Dry run unless --apply is
+# passed, and even then nothing is guessed: unresolved reports are listed for a human.
+cmd_backfill() {
+  [ -f "$WORK/token.txt" ] || die "no token — run 'up' first"
+  local dry=true; [ "${1:-}" = "--apply" ] && dry=false
+  local t; t=$(cat "$WORK/token.txt")
+
+  say "$( [ "$dry" = true ] && echo 'Dry run:' || echo 'Applying:') report owner backfill"
+  # Response to a file, program via heredoc: piping curl into `python3 - <<'PY'` does not work,
+  # because the heredoc *is* stdin and shadows the pipe.
+  curl -s -X POST -H "Authorization: Bearer $t" \
+    "http://localhost:$API_PORT/api/platform/reports/backfill-owners?dryRun=$dry" \
+    > "$WORK/backfill.json"
+  python3 - "$WORK/backfill.json" <<'PY'
+import json, sys
+# Report names are Arabic; a Windows console defaults to cp1252 and raises UnicodeEncodeError
+# partway through the listing, which looks like the backfill itself crashed.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+d = json.load(open(sys.argv[1], encoding="utf-8"))
+if not d.get("success"):
+    print("  request failed:", d.get("message")); raise SystemExit(1)
+r = d["data"]
+REASON = {
+    "SystemManaged":   "system-managed (clone-only)",
+    "NoCreatedBy":     "no CreatedBy recorded",
+    "CreatorNotFound": "creator not found in this tenant",
+    "CreatorAmbiguous":"CreatedBy matches several accounts",
+}
+print(f"  mode: {'DRY RUN' if r['dryRun'] else 'APPLIED'}   ownerless scanned: {r['scannedOwnerless']}")
+
+print(f"\n  WILL RECEIVE AN OWNER ({len(r['assigned'])})")
+for a in r["assigned"] or []:
+    print(f"    {a['code']:<24} {a['name'][:28]:<30} -> {a['ownerEmail']}")
+if not r["assigned"]: print("    (none)")
+
+print(f"\n  SYSTEM, STAYING OWNERLESS ({len(r['systemManaged'])})")
+for s in r["systemManaged"] or []:
+    print(f"    {s['code']:<24} {s['name'][:28]:<30}    clone to customise")
+if not r["systemManaged"]: print("    (none)")
+
+print(f"\n  NEEDS AN ADMINISTRATOR ({len(r['unresolved'])})")
+for s in r["unresolved"] or []:
+    print(f"    {s['code']:<24} {s['name'][:28]:<30}    {REASON.get(s['reason'], s['reason'])}"
+          + (f"  [CreatedBy: {s['createdBy']}]" if s.get("createdBy") else ""))
+if not r["unresolved"]: print("    (none)")
+
+if r["dryRun"] and r["assigned"]:
+    print("\n  Re-run with --apply to write these.")
+PY
+}
+
 # ── test ─────────────────────────────────────────────────────────────────────
 cmd_test() {
   say "Running the Platform suite against $DB_NAME"
@@ -186,10 +239,11 @@ cmd_down() {
 }
 
 case "${1:-}" in
-  up)    cmd_up ;;
-  seed)  cmd_seed ;;
-  token) cmd_token ;;
-  test)  cmd_test ;;
-  down)  cmd_down ;;
+  up)       cmd_up ;;
+  seed)     cmd_seed ;;
+  token)    cmd_token ;;
+  test)     cmd_test ;;
+  backfill) shift; cmd_backfill "${1:-}" ;;
+  down)     cmd_down ;;
   *) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

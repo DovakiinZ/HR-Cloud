@@ -144,7 +144,46 @@ real database was attached.
 
 Each test runs in a transaction and rolls back, so the database is reusable across runs.
 
-### 9. Cleanup
+### 9. Backfilling ownerless legacy reports
+
+```bash
+./scripts/reports-e2e.sh backfill            # dry run — shows the plan, writes nothing
+./scripts/reports-e2e.sh backfill --apply    # write it
+```
+
+Reports created before ownership was recorded have `OwnerId = null`. Since `CanEdit` is
+"owner **or** a share granting edit", those reports are editable by nobody. The backfill
+restores the owner the row already implies, from `CreatedBy`.
+
+It is deliberately conservative and prints three lists:
+
+| List | Meaning |
+|---|---|
+| **Will receive an owner** | `CreatedBy` resolves to exactly one user *in the same tenant* |
+| **System, staying ownerless** | `SYS_*` — system-managed, clone-only, never assigned an owner |
+| **Needs an administrator** | no `CreatedBy`, creator not in this tenant, or `CreatedBy` matches several accounts |
+
+It never overwrites an existing owner, never assigns one to a system report, and never
+falls back to "the first admin" or to the caller — a wrong owner silently hands someone
+else's report away, so unresolvable rows are reported for a human to decide. Running it
+twice assigns nothing the second time.
+
+`CreatedBy` holds the creator's **email**, not a user id (`ApplicationDbContext` stamps
+`_currentUser.Email`), so matching is by email and scoped to the tenant — a shared address
+across tenants cannot leak ownership sideways.
+
+The same thing is available directly at `POST /api/platform/reports/backfill-owners?dryRun=true`,
+gated on `Platform.Reports.Delete`.
+
+### System reports are clone-only
+
+`SYS_*` reports are regenerated wholesale every time `seed-system` runs — the handler
+hard-removes them and rebuilds from the field registry. Anything edited into one is
+destroyed on the next seed with no warning, so `ReportAccessResolver.CanEdit` refuses them
+outright, regardless of owner or share. Clone one and customise the copy; the clone is
+owned by whoever made it and is fully editable.
+
+### 10. Cleanup
 
 ```bash
 ./scripts/reports-e2e.sh down
