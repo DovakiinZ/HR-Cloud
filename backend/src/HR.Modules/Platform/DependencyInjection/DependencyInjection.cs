@@ -117,6 +117,12 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Requests.RequestEngine>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestTypeAdminService,
+            HR.Modules.Platform.Services.Requests.RequestTypeAdminService>();
+        services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestEffectDefinitionService,
+            HR.Modules.Platform.Services.Requests.RequestEffectDefinitionService>();
+        services.AddScoped<HR.Modules.Platform.Services.Assets.IAssetLookupService,
+            HR.Modules.Platform.Services.Assets.AssetLookupService>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestProvisioningService,
             HR.Modules.Platform.Services.Requests.RequestProvisioningService>();
         // Registered as a hook so Identity can provision a new tenant without referencing Platform.

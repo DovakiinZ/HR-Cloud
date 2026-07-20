@@ -244,6 +244,10 @@ public sealed class RequestSeeder : IRequestSeeder
     /// <summary>Field options descriptor that tells the UI to load choices live from master data.</summary>
     private static string Lookup(string objectType) => $"{{\"lookup\":\"{objectType}\"}}";
 
+    /// <summary>An options descriptor pointing at a platform endpoint rather than master data, for
+    /// pickers whose source is a real entity feed. The path is relative to /api/platform/.</summary>
+    private static string EndpointLookup(string path) => $"{{\"endpoint\":\"{path}\"}}";
+
     private static WorkflowStepConfig Step(ApproverType type, string ar, string en)
         => new() { ApproverType = (int)type, NameAr = ar, NameEn = en };
 
@@ -437,10 +441,14 @@ public sealed class RequestSeeder : IRequestSeeder
     });
 
     /// <summary>Asset, expected return date, notes — the three fields the custody example needs.
-    /// The asset dropdown is a live master-data lookup, so no asset ids are baked into the seed.</summary>
+    ///
+    /// The asset dropdown reads GET /api/platform/assets/assignable, not a master-data lookup.
+    /// MasterDataObjectType.AssetType lists asset *categories* ("Laptop", "Vehicle"), so binding the
+    /// picker to it would have offered a category where Assets.AssignCustody expects an asset id —
+    /// the effect would then fail at approval time on every custody request.</summary>
     private static FormSpec CustodyForm() => new("FORM_CUSTODY_REQUEST", "نموذج طلب عهدة", "Custody Request Form", new()
     {
-        F("assetId", "الأصل", "Asset", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.AssetType)),
+        F("assetId", "الأصل", "Asset", FieldType.Dropdown, true, options: EndpointLookup("assets/assignable")),
         F("expectedReturnDate", "تاريخ الإرجاع المتوقع", "Expected Return Date", FieldType.Date, false),
         F("notes", "ملاحظات", "Notes", FieldType.TextArea, false),
     });
