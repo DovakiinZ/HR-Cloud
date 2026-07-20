@@ -63,6 +63,20 @@ public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResul
     }
 }
 
+public static class ReportSearch
+{
+    /// <summary>Escape character for the LIKE patterns built from user input.</summary>
+    public const string LikeEscape = "\\";
+
+    /// <summary>Neutralises LIKE metacharacters in a user's search term. Without this, searching for
+    /// the literal code "DEMO_001" would treat "_" as "any single character" and also match
+    /// "DEMO-001" or "DEMOX001".</summary>
+    public static string EscapeLike(string input)
+        => input.Replace(LikeEscape, LikeEscape + LikeEscape)
+                .Replace("%", LikeEscape + "%")
+                .Replace("_", LikeEscape + "_");
+}
+
 public record GetReportsQuery : IRequest<PaginatedList<ReportDefinitionDto>>
 {
     public int PageNumber { get; init; } = 1;
@@ -90,8 +104,19 @@ public class GetReportsQueryHandler : IRequestHandler<GetReportsQuery, Paginated
             .Include(r => r.Relationships.OrderBy(x => x.SortOrder))
             .AsQueryable();
         var query = await _access.FilterVisibleAsync(baseQuery, ct);
-        if (!string.IsNullOrEmpty(request.Search))
-            query = query.Where(r => r.NameEn.Contains(request.Search) || r.NameAr.Contains(request.Search));
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            // ILIKE, not Contains: Contains translates to case-sensitive LIKE, so "attendance" found
+            // nothing while "Attendance" did. Code is searched too — users refer to reports by code
+            // (DEMO_001, SYS_PAYROLL) at least as often as by name.
+            // % and _ are escaped so a code containing an underscore matches literally rather than
+            // as a single-character wildcard.
+            var term = $"%{ReportSearch.EscapeLike(request.Search.Trim())}%";
+            query = query.Where(r =>
+                EF.Functions.ILike(r.NameEn, term, ReportSearch.LikeEscape)
+                || EF.Functions.ILike(r.NameAr, term, ReportSearch.LikeEscape)
+                || EF.Functions.ILike(r.Code, term, ReportSearch.LikeEscape));
+        }
 
         // Scope was declared but never applied — filtering by it silently returned everything.
         if (!string.IsNullOrWhiteSpace(request.Scope))
