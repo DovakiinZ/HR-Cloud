@@ -2,18 +2,19 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Loader2, Plus, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   getReport, createReport, updateReport, publishReport, runReport,
   addReportField, deleteReportField, addReportFilter, deleteReportFilter,
   addReportGrouping, deleteReportGrouping, addReportSorting, deleteReportSorting,
   addReportRelationship, deleteReportRelationship, validateFormula,
-  getSelectableObjects,
-  ReportDefinition, ReportResult, SelectableObject, CatalogField,
+  getSelectableObjects, getReportShares,
+  ReportDefinition, ReportResult, SelectableObject, CatalogField, ReportShare,
   ReportType, ReportScope, ReportFilterOperator, JoinType,
 } from "@/lib/api/reports";
 import { ReportTable } from "@/components/reports/report-table";
+import { ReportShareDialog } from "@/components/reports/share-dialog";
 
 const CLS_INPUT = "h-9 w-full border border-border bg-background px-3 text-sm";
 const CLS_BTN_PRIMARY = "inline-flex h-9 items-center gap-2 bg-primary px-4 text-sm text-primary-foreground disabled:opacity-50";
@@ -44,6 +45,8 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
   const [selectableObjects, setSelectableObjects] = useState<SelectableObject[]>([]);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<ReportResult | null>(null);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shares, setShares] = useState<ReportShare[]>([]);
 
   const [form, setForm] = useState<{
     code: string; nameEn: string; nameAr: string; description: string;
@@ -93,6 +96,18 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
     if (!reportId) return;
     try { setPreview(await runReport(reportId, { page: 1, pageSize: 50 })); }
     catch { toast.error("تعذّر تشغيل المعاينة"); }
+  };
+
+  // Sharing from the final step, so a report can be handed to its audience without a detour
+  // back to the list page.
+  const openShare = async () => {
+    if (!reportId) return;
+    try { setShares(await getReportShares(reportId)); setShareOpen(true); }
+    catch { toast.error("تعذر تحميل المشاركات"); }
+  };
+  const refreshShares = async () => {
+    if (!reportId) return;
+    try { setShares(await getReportShares(reportId)); } catch { /* dialog stays on the last good list */ }
   };
 
   const steps = ["الأساسيات", "الروابط", "الحقول", "عوامل التصفية", "التجميع والفرز", "المعاينة"];
@@ -160,7 +175,7 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
           title="عوامل التصفية"
           items={(report?.filters ?? []).map((f) => ({ id: f.id, label: `${f.fieldCode} ${f.operator} ${f.value ?? ""}${f.isParameter ? " · معامل" : ""}` }))}
           onDelete={async (fid) => { await deleteReportFilter(fid); await refreshReport(); }}
-          adder={<FilterAdder fields={report?.fields ?? []} onAdd={async (b) => { await addReportFilter(reportId, b); await refreshReport(); }} />}
+          adder={<FilterAdder fields={report?.fields ?? []} primaryObjectId={primaryObjectId} onAdd={async (b) => { await addReportFilter(reportId, b); await refreshReport(); }} />}
         />
       )}
 
@@ -185,13 +200,26 @@ export default function ReportBuilderPage({ params }: { params: Promise<{ id?: s
       {/* Step 5 — Preview */}
       {step === 5 && reportId && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button onClick={runPreview} className={CLS_BTN_PRIMARY}>تشغيل المعاينة</button>
             <button onClick={async () => { await publishReport(reportId); toast.success("تم النشر"); }} className="border border-border bg-secondary px-4 py-2 text-sm">نشر</button>
+            <button onClick={openShare} className="inline-flex items-center gap-1.5 border border-border bg-secondary px-4 py-2 text-sm">
+              <Share2 className="h-4 w-4" /> مشاركة
+            </button>
             <button onClick={() => router.push(`/reports/${reportId}`)} className="border border-border bg-secondary px-4 py-2 text-sm">فتح العارض</button>
           </div>
           {preview && <ReportTable result={preview} />}
         </div>
+      )}
+
+      {shareOpen && reportId && (
+        <ReportShareDialog
+          reportId={reportId}
+          reportName={report?.nameAr || report?.nameEn || form.nameAr || "تقرير"}
+          shares={shares}
+          onClose={() => setShareOpen(false)}
+          onChanged={refreshShares}
+        />
       )}
     </div>
   );
@@ -337,10 +365,11 @@ function ComputedFieldForm({ reportId, sortOrder, onAdded }: { reportId: string;
   const [valid, setValid] = useState<{ isValid: boolean; error?: string | null } | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // Debounced live validation as the formula is typed.
+  // Debounced live validation as the formula is typed. The empty-formula reset goes through the
+  // same timeout rather than running in the effect body, so no state is set synchronously here.
   useEffect(() => {
-    if (!formula.trim()) { setValid(null); return; }
     const t = setTimeout(async () => {
+      if (!formula.trim()) { setValid(null); return; }
       try { setValid(await validateFormula(formula)); }
       catch { setValid({ isValid: false, error: "تعذر التحقق" }); }
     }, 400);
@@ -416,14 +445,26 @@ function CodePicker({ fields, label, onPick }: { fields: ReportDefinition["field
   );
 }
 
-function FilterAdder({ fields, onAdd }: { fields: ReportDefinition["fields"]; onAdd: (b: { fieldCode: string; operator: ReportFilterOperator; value: string; valueTo?: string; isParameter: boolean }) => Promise<void> }) {
+function FilterAdder({ fields, primaryObjectId, onAdd }: { fields: ReportDefinition["fields"]; primaryObjectId: string; onAdd: (b: { fieldCode: string; operator: ReportFilterOperator; value: string; valueTo?: string; isParameter: boolean }) => Promise<void> }) {
   const [code, setCode] = useState(""); const [op, setOp] = useState<ReportFilterOperator>("Equals");
   const [value, setValue] = useState(""); const [valueTo, setValueTo] = useState(""); const [isParameter, setIsParameter] = useState(false);
+
+  // The resolver rejects a filter on a joined object's field outright ("not supported in R1").
+  // Offering them here would let the user build a report that only fails when it is run, so they
+  // are disabled at the point of choice with the reason attached.
+  const isPrimary = (f: ReportDefinition["fields"][number]) =>
+    !f.objectDefinitionId || f.objectDefinitionId === primaryObjectId;
+  const hasJoinedFields = fields.some((f) => !isPrimary(f));
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       <select value={code} onChange={(e) => setCode(e.target.value)} className={CLS_INPUT}>
         <option value="">— حقل —</option>
-        {fields.map((f) => <option key={f.id} value={f.fieldCode}>{f.displayNameAr || f.displayNameEn}</option>)}
+        {fields.map((f) => (
+          <option key={f.id} value={f.fieldCode} disabled={!isPrimary(f)}>
+            {f.displayNameAr || f.displayNameEn}{isPrimary(f) ? "" : " (حقل مرتبط — غير مدعوم)"}
+          </option>
+        ))}
       </select>
       <select value={op} onChange={(e) => setOp(e.target.value as ReportFilterOperator)} className={CLS_INPUT}>
         {OPERATORS.map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
@@ -432,6 +473,11 @@ function FilterAdder({ fields, onAdd }: { fields: ReportDefinition["fields"]; on
       {op === "Between" && <input value={valueTo} onChange={(e) => setValueTo(e.target.value)} placeholder="إلى" className={CLS_INPUT} />}
       <label className="flex items-center gap-1 text-xs"><input type="checkbox" checked={isParameter} onChange={(e) => setIsParameter(e.target.checked)} /> معامل وقت التشغيل</label>
       <button disabled={!code} onClick={() => code && onAdd({ fieldCode: code, operator: op, value, valueTo: op === "Between" ? valueTo : undefined, isParameter })} className={CLS_BTN_PRIMARY}>أضف</button>
+
+      <p className="w-full text-xs text-muted-foreground">
+        تُدمج كل عوامل التصفية بعلاقة «و» (AND) — لا يوجد خيار «أو».
+        {hasJoinedFields ? " ولا يمكن التصفية على حقول الكائنات المرتبطة." : ""}
+      </p>
     </div>
   );
 }

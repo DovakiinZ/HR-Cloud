@@ -89,16 +89,20 @@ public class CreateQuickReportCommandHandler : IRequestHandler<CreateQuickReport
             byKey, request.FieldKeys, request.Filters, request.GroupByKeys, request.Sorts, _ids);
 
         var reportId = Guid.NewGuid();
+        var code = request.Code ?? $"QR_{Guid.NewGuid():N}"[..15].ToUpperInvariant();
         var report = new ReportDefinition
         {
             Id = reportId,
-            Code = request.Code ?? $"QR_{Guid.NewGuid():N}"[..15].ToUpperInvariant(),
+            Code = code,
             NameEn = request.NameEn,
             NameAr = request.NameAr,
             Description = request.Description,
             ReportType = plan.HasAggregation ? ReportType.Summary : ReportType.Tabular,
             Scope = request.Scope,
-            OwnerId = _user.UserId,
+            // A system report belongs to the tenant, not to whoever happened to press "seed". Leaving
+            // it ownerless keeps that honest; CanEdit refuses it either way, so this is about not
+            // recording a misleading owner rather than about the permission itself.
+            OwnerId = ReportSystemPolicy.IsSystemManaged(code) ? null : _user.UserId,
             PrimaryObjectId = plan.PrimaryObjectId,
             IsPublished = request.Publish,
             IsActive = true,

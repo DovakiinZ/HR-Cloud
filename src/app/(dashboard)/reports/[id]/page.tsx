@@ -2,8 +2,9 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
+import { AccessGuard } from "@/components/access/access-guard";
 import { usePermission } from "@/lib/permissions";
 import { getReport, runReport, exportReport, ReportDefinition, ReportResult, ExportFormat } from "@/lib/api/reports";
 import { ReportTable } from "@/components/reports/report-table";
@@ -15,8 +16,20 @@ const FORMATS: { key: ExportFormat; label: string }[] = [
   { key: "sif", label: "WPS/SIF" },
 ];
 
+const SCOPE_LABEL: Record<string, string> = {
+  Personal: "شخصي", Department: "إدارة", Company: "شركة", Shared: "مشترك",
+};
+
 export default function ReportViewerPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  return (
+    <AccessGuard anyOf={["Platform.Reports.View"]}>
+      <Viewer id={id} />
+    </AccessGuard>
+  );
+}
+
+function Viewer({ id }: { id: string }) {
   const { allowed: canEdit } = usePermission("Platform.Reports.Edit");
   const { allowed: canExport } = usePermission("Platform.Reports.Export");
   const [report, setReport] = useState<ReportDefinition | null>(null);
@@ -45,16 +58,20 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
   useEffect(() => { queueMicrotask(() => { load(); }); }, [load]);
 
   // Seed the draft inputs from the parameterized filters' stored defaults once, for UX.
+  // Deferred to a microtask so the effect body does not call setState synchronously, matching
+  // the load() effect above and the codebase's usePermissions pattern.
   useEffect(() => {
     if (paramFilters.length === 0) return;
-    setDraft((prev) => {
-      if (Object.keys(prev).length > 0) return prev;
-      const seed: Record<string, string> = {};
-      for (const f of paramFilters) {
-        if (f.value != null) seed[f.fieldCode] = f.value;
-        if (f.operator === "Between" && f.valueTo != null) seed[`${f.fieldCode}:to`] = f.valueTo;
-      }
-      return seed;
+    queueMicrotask(() => {
+      setDraft((prev) => {
+        if (Object.keys(prev).length > 0) return prev;
+        const seed: Record<string, string> = {};
+        for (const f of paramFilters) {
+          if (f.value != null) seed[f.fieldCode] = f.value;
+          if (f.operator === "Between" && f.valueTo != null) seed[`${f.fieldCode}:to`] = f.valueTo;
+        }
+        return seed;
+      });
     });
   }, [paramFilters]);
 
@@ -67,10 +84,27 @@ export default function ReportViewerPage({ params }: { params: Promise<{ id: str
 
   return (
     <div className="space-y-6" dir="rtl">
-      <div className="flex items-start justify-between gap-4">
+      <Link href="/reports" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+        <ArrowRight className="h-4 w-4" />
+        التقارير
+      </Link>
+
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{report?.nameAr || report?.nameEn || "تقرير"}</h1>
-          <p className="text-sm text-muted-foreground mt-1">{report?.nameEn}{report?.code ? ` · ${report.code}` : ""}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>{report?.nameEn}{report?.code ? ` · ${report.code}` : ""}</span>
+            {report && (
+              <span className="border border-border bg-secondary px-2 py-0.5 text-xs">
+                {SCOPE_LABEL[report.scope] ?? report.scope}
+              </span>
+            )}
+            {report?.isPublished ? (
+              <span className="border border-green-600/30 bg-green-600/10 px-2 py-0.5 text-xs text-green-700 dark:text-green-400">منشور</span>
+            ) : report ? (
+              <span className="border border-border bg-secondary px-2 py-0.5 text-xs">مسودة</span>
+            ) : null}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           {canEdit && report && (

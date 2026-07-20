@@ -30,11 +30,51 @@ public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResul
     {
         await _access.EnsureCanReadAsync(request.Id, ct);
         var result = await _exec.RunAsync(request.Id, request.Page, request.PageSize, request.Parameters, ct);
-        var state = await ReportUserStateHelper.GetOrCreateAsync(_db, _user.UserId, request.Id, ct);
-        state.LastViewedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        await StampLastViewedAsync(request.Id, ct);
         return result;
     }
+
+    /// <summary>
+    /// Records "you last opened this report now". This is bookkeeping for the Recent view, so it
+    /// must never fail the run: the report has already executed and the caller is entitled to it.
+    ///
+    /// Two concurrent runs of the same report both see no user-state row, both insert, and the
+    /// second violates IX_engine_report_user_states_TenantId_UserId_ReportDefinitionId — a 500 that
+    /// loses the whole result over a timestamp. React's development double-invoke reproduces it on
+    /// a plain page load. On that collision the other request has already written the row, so
+    /// stamping it again is redundant; give up quietly rather than retry.
+    /// </summary>
+    private async Task StampLastViewedAsync(Guid reportId, CancellationToken ct)
+    {
+        try
+        {
+            var state = await ReportUserStateHelper.GetOrCreateAsync(_db, _user.UserId, reportId, ct);
+            state.LastViewedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Detach the row we failed to insert, or it is retried on the next SaveChanges made
+            // through this same scoped context and fails again there.
+            foreach (var entry in _db.ChangeTracker.Entries<ReportUserState>()
+                         .Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+        }
+    }
+}
+
+public static class ReportSearch
+{
+    /// <summary>Escape character for the LIKE patterns built from user input.</summary>
+    public const string LikeEscape = "\\";
+
+    /// <summary>Neutralises LIKE metacharacters in a user's search term. Without this, searching for
+    /// the literal code "DEMO_001" would treat "_" as "any single character" and also match
+    /// "DEMO-001" or "DEMOX001".</summary>
+    public static string EscapeLike(string input)
+        => input.Replace(LikeEscape, LikeEscape + LikeEscape)
+                .Replace("%", LikeEscape + "%")
+                .Replace("_", LikeEscape + "_");
 }
 
 public record GetReportsQuery : IRequest<PaginatedList<ReportDefinitionDto>>
@@ -64,8 +104,19 @@ public class GetReportsQueryHandler : IRequestHandler<GetReportsQuery, Paginated
             .Include(r => r.Relationships.OrderBy(x => x.SortOrder))
             .AsQueryable();
         var query = await _access.FilterVisibleAsync(baseQuery, ct);
-        if (!string.IsNullOrEmpty(request.Search))
-            query = query.Where(r => r.NameEn.Contains(request.Search) || r.NameAr.Contains(request.Search));
+        if (!string.IsNullOrWhiteSpace(request.Search))
+        {
+            // ILIKE, not Contains: Contains translates to case-sensitive LIKE, so "attendance" found
+            // nothing while "Attendance" did. Code is searched too — users refer to reports by code
+            // (DEMO_001, SYS_PAYROLL) at least as often as by name.
+            // % and _ are escaped so a code containing an underscore matches literally rather than
+            // as a single-character wildcard.
+            var term = $"%{ReportSearch.EscapeLike(request.Search.Trim())}%";
+            query = query.Where(r =>
+                EF.Functions.ILike(r.NameEn, term, ReportSearch.LikeEscape)
+                || EF.Functions.ILike(r.NameAr, term, ReportSearch.LikeEscape)
+                || EF.Functions.ILike(r.Code, term, ReportSearch.LikeEscape));
+        }
 
         // Scope was declared but never applied — filtering by it silently returned everything.
         if (!string.IsNullOrWhiteSpace(request.Scope))

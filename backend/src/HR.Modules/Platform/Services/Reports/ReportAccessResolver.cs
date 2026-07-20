@@ -23,6 +23,12 @@ public static class ReportAccessResolver
 
     public static bool CanEdit(ReportDefinition report, IReadOnlyList<ReportShare> shares, ReportAccessContext ctx)
     {
+        // System-managed reports are clone-only, stated rather than left to emerge from having no
+        // owner. Relying on ownerlessness would be a silent invariant: the moment anything stamped
+        // an owner on one, or an edit-share were attached, it would quietly become editable — and
+        // the next seed run would discard those edits without warning.
+        if (ReportSystemPolicy.IsSystemManaged(report.Code)) return false;
+
         if (report.OwnerId == ctx.UserId) return true;
         return shares.Any(s => s.CanEdit && Matches(s, ctx));
     }

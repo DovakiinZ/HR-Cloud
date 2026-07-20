@@ -43,6 +43,26 @@ public class ReportsController : BaseApiController
         return OkResponse(outcomes, "Default reports ready");
     }
 
+    /// <summary>Give ownerless legacy reports back the owner their CreatedBy already implies.
+    ///
+    /// Defaults to a dry run — pass dryRun=false to write. Nothing is guessed: a report whose
+    /// creator cannot be resolved within this tenant is reported for an administrator to decide,
+    /// and system reports stay ownerless by design.
+    ///
+    /// Gated on Delete, the most privileged report permission, because reassigning ownership is
+    /// as consequential as removal — it decides who can subsequently change a report.</summary>
+    [HttpPost("backfill-owners")]
+    [RequirePermission("Platform.Reports.Delete")]
+    public async Task<ActionResult<ApiResponse<ReportOwnerBackfillResult>>> BackfillOwners(
+        [FromQuery] bool dryRun = true, CancellationToken ct = default)
+    {
+        var backfill = HttpContext.RequestServices.GetRequiredService<IReportOwnerBackfill>();
+        var result = await backfill.RunAsync(dryRun, ct);
+        return OkResponse(result, dryRun
+            ? $"Dry run — {result.Assigned.Count} would be assigned, {result.Unresolved.Count} need an administrator"
+            : $"{result.Assigned.Count} assigned, {result.Unresolved.Count} need an administrator");
+    }
+
     [HttpGet]
     [RequirePermission("Platform.Reports.View")]
     public async Task<ActionResult<ApiResponse<PaginatedList<ReportDefinitionDto>>>> GetAll([FromQuery] GetReportsQuery query, CancellationToken ct)
