@@ -37,13 +37,15 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     private readonly IEffectConfigurationValidator _validator;
     private readonly IEffectActionCatalog _catalog;
     private readonly IEffectExecutorRegistry _executors;
+    private readonly IEffectPermissionGuard _permissions;
 
     public RequestEffectDefinitionService(
         ApplicationDbContext db,
         IEffectConfigurationValidator validator,
         IEffectActionCatalog catalog,
-        IEffectExecutorRegistry executors)
-    { _db = db; _validator = validator; _catalog = catalog; _executors = executors; }
+        IEffectExecutorRegistry executors,
+        IEffectPermissionGuard permissions)
+    { _db = db; _validator = validator; _catalog = catalog; _executors = executors; _permissions = permissions; }
 
     public async Task<IReadOnlyList<RequestEffectDefinitionDto>> ListAsync(Guid requestTypeId, CancellationToken ct)
     {
@@ -58,6 +60,7 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     public async Task<RequestEffectDefinitionDto> AddAsync(Guid requestTypeId, UpsertEffectDefinitionInput input, CancellationToken ct)
     {
         var type = await LoadTypeAsync(requestTypeId, ct);
+        _permissions.EnsureCanConfigure(input.EffectType);
         await EnsureConfigurationValidAsync(type.FormDefinitionId, input, ct);
 
         var nextSequence = input.Sequence > 0
@@ -89,6 +92,12 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     {
         var effect = await LoadEffectAsync(effectId, ct);
         var type = await LoadTypeAsync(effect.RequestTypeId, ct);
+
+        // Both sides: the caller must be allowed to touch what is there, and to install what they
+        // are replacing it with. Checking only the target would let someone without Loans.Create
+        // edit an existing Loan.Create effect's configuration.
+        _permissions.EnsureCanConfigure(effect.EffectType);
+        _permissions.EnsureCanConfigure(input.EffectType);
 
         // Changing which action a required effect runs is a disguised delete.
         if (effect.IsRequired && !string.Equals(effect.EffectType, input.EffectType, StringComparison.OrdinalIgnoreCase))
@@ -122,6 +131,7 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     public async Task<RequestEffectDefinitionDto> SetEnabledAsync(Guid effectId, bool enabled, CancellationToken ct)
     {
         var effect = await LoadEffectAsync(effectId, ct);
+        _permissions.EnsureCanConfigure(effect.EffectType);
         if (effect.IsRequired && !enabled)
             throw new ForbiddenException($"'{effect.EffectType}' is required by this system request and cannot be disabled.");
 
@@ -133,6 +143,7 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     public async Task DeleteAsync(Guid effectId, CancellationToken ct)
     {
         var effect = await LoadEffectAsync(effectId, ct);
+        _permissions.EnsureCanConfigure(effect.EffectType);
         if (effect.IsRequired)
             throw new ForbiddenException(
                 $"'{effect.EffectType}' is required by this system request and cannot be deleted. " +
@@ -173,6 +184,7 @@ public sealed class RequestEffectDefinitionService : IRequestEffectDefinitionSer
     public async Task<ValidationResultDto> ValidateAsync(Guid requestTypeId, UpsertEffectDefinitionInput input, CancellationToken ct)
     {
         var type = await LoadTypeAsync(requestTypeId, ct);
+        _permissions.EnsureCanConfigure(input.EffectType);
         var result = await _validator.ValidateEffectAsync(
             input.EffectType, input.Trigger, input.ConfigurationJson, type.FormDefinitionId, ct);
         return new ValidationResultDto

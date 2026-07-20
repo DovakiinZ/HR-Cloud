@@ -40,13 +40,15 @@ public sealed class RequestTypeAdminService : IRequestTypeAdminService
     private readonly IEffectConfigurationValidator _validator;
     private readonly IEffectActionCatalog _catalog;
     private readonly IEffectExecutorRegistry _executors;
+    private readonly IEffectPermissionGuard _permissions;
 
     public RequestTypeAdminService(
         ApplicationDbContext db,
         IEffectConfigurationValidator validator,
         IEffectActionCatalog catalog,
-        IEffectExecutorRegistry executors)
-    { _db = db; _validator = validator; _catalog = catalog; _executors = executors; }
+        IEffectExecutorRegistry executors,
+        IEffectPermissionGuard permissions)
+    { _db = db; _validator = validator; _catalog = catalog; _executors = executors; _permissions = permissions; }
 
     // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -155,6 +157,13 @@ public sealed class RequestTypeAdminService : IRequestTypeAdminService
     public async Task<RequestTypeDetailAdminDto> DuplicateAsync(Guid id, DuplicateRequestTypeInput input, CancellationToken ct)
     {
         var source = await LoadAsync(id, ct);
+
+        // Duplication installs a copy of every effect, so it needs the same authority as attaching
+        // them one by one. Otherwise copying a system request would be a way to acquire actions the
+        // caller cannot configure.
+        foreach (var effect in source.Effects)
+            _permissions.EnsureCanConfigure(effect.EffectType);
+
         var code = string.IsNullOrWhiteSpace(input.Code)
             ? await GenerateUniqueCodeAsync(source.Code, ct)
             : NormalizeCode(input.Code!);
@@ -224,6 +233,12 @@ public sealed class RequestTypeAdminService : IRequestTypeAdminService
 
         if (active)
         {
+            // Publishing is when the configuration becomes real, so the publisher must be allowed to
+            // configure every action they are switching on — otherwise a user could assemble a
+            // request with Loan.Create while unable to attach it, and activate it anyway.
+            foreach (var effect in type.Effects.Where(e => e.IsEnabled))
+                _permissions.EnsureCanConfigure(effect.EffectType);
+
             var result = await _validator.ValidateRequestTypeAsync(id, ct);
             if (!result.IsValid)
                 throw new ValidationException(result.Errors

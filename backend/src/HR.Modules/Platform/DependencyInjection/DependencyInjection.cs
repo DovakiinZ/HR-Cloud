@@ -117,6 +117,8 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Requests.RequestEngine>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestSeeder,
             HR.Modules.Platform.Services.Requests.RequestSeeder>();
+        services.AddScoped<HR.Modules.Platform.Services.Completion.IEffectPermissionGuard,
+            HR.Modules.Platform.Services.Completion.EffectPermissionGuard>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestTypeAdminService,
             HR.Modules.Platform.Services.Requests.RequestTypeAdminService>();
         services.AddScoped<HR.Modules.Platform.Services.Requests.IRequestEffectDefinitionService,

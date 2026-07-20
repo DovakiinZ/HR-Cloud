@@ -4,6 +4,7 @@ using HR.Application.Common.Models;
 using HR.Application.Engines.Completion;
 using HR.Modules.Platform.DTOs.Requests;
 using HR.Modules.Platform.Services.Assets;
+using HR.Modules.Platform.Services.Completion;
 using HR.Modules.Platform.Services.Requests;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -31,14 +32,16 @@ public class RequestTypesController : BaseApiController
     private readonly IEffectActionCatalog _catalog;
     private readonly IEffectExecutorRegistry _executors;
     private readonly IAssetLookupService _assets;
+    private readonly IEffectPermissionGuard _permissions;
 
     public RequestTypesController(
         IRequestTypeAdminService types,
         IRequestEffectDefinitionService effects,
         IEffectActionCatalog catalog,
         IEffectExecutorRegistry executors,
-        IAssetLookupService assets)
-    { _types = types; _effects = effects; _catalog = catalog; _executors = executors; _assets = assets; }
+        IAssetLookupService assets,
+        IEffectPermissionGuard permissions)
+    { _types = types; _effects = effects; _catalog = catalog; _executors = executors; _assets = assets; _permissions = permissions; }
 
     // ── Request type CRUD ─────────────────────────────────────────────────────
 
@@ -155,7 +158,9 @@ public class RequestTypesController : BaseApiController
     [RequirePermission("Platform.Workflows.View")]
     public ActionResult<ApiResponse<IReadOnlyList<EffectActionDto>>> Catalog()
     {
-        var actions = _catalog.All().Select(d => new EffectActionDto
+        // Only what this caller may actually configure. Offering an action the service would then
+        // refuse turns a permission boundary into a confusing error at save time.
+        var actions = _permissions.ConfigurableActions().Select(d => new EffectActionDto
         {
             EffectType = d.EffectType,
             LabelAr = d.LabelAr, LabelEn = d.LabelEn,

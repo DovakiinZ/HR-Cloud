@@ -36,7 +36,9 @@ public class RequestTypeAdminApiTests
         public Guid UserId => _bg.UserId ?? Guid.Empty;
         public Guid TenantId => _bg.IsActive ? _bg.TenantId : Guid.Empty;
         public string? Email => _bg.Email;
-        public IReadOnlyList<string> Permissions { get; } = Array.Empty<string>();
+        /// <summary>Mutable so one harness can act as different callers within a test.</summary>
+        public List<string> Granted { get; } = new();
+        public IReadOnlyList<string> Permissions => Granted;
         public bool IsAuthenticated => _bg.IsActive;
     }
 
@@ -46,13 +48,23 @@ public class RequestTypeAdminApiTests
         IRequestTypeAdminService Types,
         IRequestEffectDefinitionService Effects,
         IAssetLookupService Assets,
-        RequestProvisioningService Provisioning);
+        RequestProvisioningService Provisioning,
+        ScopedUser User,
+        IEffectPermissionGuard Permissions);
 
     private static Harness Build()
     {
         var bg = new BackgroundExecutionContext();
+        var user = new ScopedUser(bg);
+        // Every action's permissions by default, so the pre-existing tests exercise the protection
+        // rules rather than tripping over authorization.
+        user.Granted.AddRange(new[]
+        {
+            "Leaves.Create", "Attendance.Edit", "Attendance.Create", "Expenses.Create",
+            "Loans.Create", "Platform.MasterData.Edit", "Notifications.Create", "Tasks.Create",
+        });
         var db = new ApplicationDbContext(
-            new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(Conn).Options, new ScopedUser(bg));
+            new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(Conn).Options, user);
         var catalog = new EffectActionCatalog();
         var executors = new EffectExecutorRegistry(new IEffectExecutor[]
         {
@@ -69,11 +81,13 @@ public class RequestTypeAdminApiTests
         });
         var validator = new EffectConfigurationValidator(db, catalog, executors);
         var seeder = new RequestSeeder(db, new NoopPage(), new NoopLib());
+        var guard = new EffectPermissionGuard(user, catalog);
         return new Harness(db, bg,
-            new RequestTypeAdminService(db, validator, catalog, executors),
-            new RequestEffectDefinitionService(db, validator, catalog, executors),
+            new RequestTypeAdminService(db, validator, catalog, executors, guard),
+            new RequestEffectDefinitionService(db, validator, catalog, executors, guard),
             new AssetLookupService(db),
-            new RequestProvisioningService(db, seeder, bg, NullLogger<RequestProvisioningService>.Instance));
+            new RequestProvisioningService(db, seeder, bg, NullLogger<RequestProvisioningService>.Instance),
+            user, guard);
     }
 
     /// <summary>Stands in for executors owned by other modules — the registry only needs the key
@@ -109,6 +123,18 @@ public class RequestTypeAdminApiTests
         {
             FormDefinitionId = form.Id, Code = "notes", NameEn = "Notes", NameAr = "ملاحظات",
             FieldType = FieldType.TextArea, IsRequired = false, SortOrder = 1,
+        });
+        // Loan inputs. The catalog declares loanType/amount as FormField-or-RequestContext, never
+        // Constant — an amount typed into the request *type* would apply to every submitter.
+        form.Fields.Add(new FormField
+        {
+            FormDefinitionId = form.Id, Code = "loanType", NameEn = "Loan Type", NameAr = "نوع القرض",
+            FieldType = FieldType.Dropdown, IsRequired = false, SortOrder = 2,
+        });
+        form.Fields.Add(new FormField
+        {
+            FormDefinitionId = form.Id, Code = "amount", NameEn = "Amount", NameAr = "المبلغ",
+            FieldType = FieldType.Decimal, IsRequired = false, SortOrder = 3,
         });
         db.FormDefinitions.Add(form);
 
@@ -485,6 +511,144 @@ public class RequestTypeAdminApiTests
 
             var searched = await h.Assets.GetAssignableAsync("lap-001", default);
             searched.Should().ContainSingle(because: "search is case-insensitive");
+        }
+        await tx.RollbackAsync();
+    }
+
+
+    // ── 11-14. Catalog RequiredPermissions ────────────────────────────────────
+
+    [SkippableFact]
+    public async Task Workflows_edit_alone_does_not_allow_attaching_a_business_action()
+    {
+        Skip.If(string.IsNullOrWhiteSpace(Conn), "Set REPORTS_TEST_DB to run.");
+        var h = Build();
+        await using var db = h.Db;
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var tenant = Guid.NewGuid();
+
+        using (h.Background.Begin(tenant))
+        {
+            var (formId, wfId) = await SeedFormAndWorkflowAsync(db);
+            var type = await h.Types.CreateAsync(NewTypeInput(formId, wfId), default);
+
+            // A request-type editor with no business permissions at all.
+            h.User.Granted.Clear();
+            h.User.Granted.Add("Platform.Workflows.Edit");
+
+            var act = () => h.Effects.AddAsync(type.Id, new UpsertEffectDefinitionInput
+            {
+                EffectType = EffectTypes.LoanCreate,
+                ConfigurationJson = EffectConfiguration.Serialize(new Dictionary<string, EffectValueMapping>
+                {
+                    ["loanType"] = new() { Source = EffectValueSource.FormField, Key = "loanType" },
+                    ["amount"] = new() { Source = EffectValueSource.FormField, Key = "amount" },
+                }),
+            }, default);
+
+            (await act.Should().ThrowAsync<ForbiddenException>())
+                .WithMessage("*Loans.Create*", because: "the refusal must name the permission that is missing");
+
+            (await db.RequestEffectDefinitions.CountAsync(e => e.RequestTypeId == type.Id)).Should().Be(0);
+        }
+        await tx.RollbackAsync();
+    }
+
+    [SkippableFact]
+    public async Task Holding_the_action_permission_allows_attaching_it()
+    {
+        Skip.If(string.IsNullOrWhiteSpace(Conn), "Set REPORTS_TEST_DB to run.");
+        var h = Build();
+        await using var db = h.Db;
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var tenant = Guid.NewGuid();
+
+        using (h.Background.Begin(tenant))
+        {
+            var (formId, wfId) = await SeedFormAndWorkflowAsync(db);
+            var type = await h.Types.CreateAsync(NewTypeInput(formId, wfId), default);
+
+            h.User.Granted.Clear();
+            h.User.Granted.AddRange(new[] { "Platform.Workflows.Edit", "Loans.Create" });
+
+            var added = await h.Effects.AddAsync(type.Id, new UpsertEffectDefinitionInput
+            {
+                EffectType = EffectTypes.LoanCreate,
+                ConfigurationJson = EffectConfiguration.Serialize(new Dictionary<string, EffectValueMapping>
+                {
+                    ["loanType"] = new() { Source = EffectValueSource.FormField, Key = "loanType" },
+                    ["amount"] = new() { Source = EffectValueSource.FormField, Key = "amount" },
+                }),
+            }, default);
+
+            added.EffectType.Should().Be(EffectTypes.LoanCreate);
+
+            // And the catalog offers only what this caller may configure.
+            var offered = h.Permissions.ConfigurableActions().Select(d => d.EffectType).ToList();
+            offered.Should().Contain(EffectTypes.LoanCreate);
+            offered.Should().NotContain(EffectTypes.AssetsAssignCustody,
+                because: "Platform.MasterData.Edit was not granted");
+        }
+        await tx.RollbackAsync();
+    }
+
+    [SkippableFact]
+    public async Task Activation_is_refused_when_the_publisher_cannot_configure_an_enabled_effect()
+    {
+        Skip.If(string.IsNullOrWhiteSpace(Conn), "Set REPORTS_TEST_DB to run.");
+        var h = Build();
+        await using var db = h.Db;
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var tenant = Guid.NewGuid();
+
+        using (h.Background.Begin(tenant))
+        {
+            var (formId, wfId) = await SeedFormAndWorkflowAsync(db);
+            var type = await h.Types.CreateAsync(NewTypeInput(formId, wfId), default);
+            await h.Effects.AddAsync(type.Id, new UpsertEffectDefinitionInput
+            {
+                EffectType = EffectTypes.AssetsAssignCustody,
+                ConfigurationJson = CustodyConfig(),
+            }, default);
+
+            // The effect was attached by someone who could; the publisher cannot.
+            h.User.Granted.Clear();
+            h.User.Granted.Add("Platform.Workflows.Edit");
+
+            var act = () => h.Types.SetActiveAsync(type.Id, true, default);
+            (await act.Should().ThrowAsync<ForbiddenException>())
+                .WithMessage("*Platform.MasterData.Edit*");
+
+            (await db.RequestTypes.AsNoTracking().FirstAsync(t => t.Id == type.Id))
+                .IsActive.Should().BeFalse();
+        }
+        await tx.RollbackAsync();
+    }
+
+    [SkippableFact]
+    public async Task Provisioning_installs_required_effects_without_any_permissions()
+    {
+        Skip.If(string.IsNullOrWhiteSpace(Conn), "Set REPORTS_TEST_DB to run.");
+        var h = Build();
+        await using var db = h.Db;
+        await using var tx = await db.Database.BeginTransactionAsync();
+        var tenant = Guid.NewGuid();
+
+        // Onboarding runs with no HTTP principal and therefore no permissions at all. Provisioning
+        // must still install the required effects — it writes through the DbContext rather than the
+        // admin services, and gating it on the caller's permissions would leave a new tenant with a
+        // Leave Request that never deducts balance.
+        h.User.Granted.Clear();
+
+        var result = await h.Provisioning.ProvisionTenantAsync(tenant, null, default);
+        result.Created.Should().BeGreaterThan(0);
+
+        using (h.Background.Begin(tenant))
+        {
+            var leave = await db.RequestTypes.Include(t => t.Effects).AsNoTracking()
+                .FirstAsync(t => t.Code == "LEAVE_REQUEST");
+            leave.Effects.Where(e => e.IsRequired).Should().NotBeEmpty();
+            leave.Effects.Should().OnlyContain(e => e.IsEnabled);
         }
         await tx.RollbackAsync();
     }
