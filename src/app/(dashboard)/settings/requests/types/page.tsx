@@ -1,372 +1,219 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, Clock, FileSignature, GitBranch } from "lucide-react";
+import { ArrowRight, Copy, GitBranch, Loader2, Lock, Pencil, Plus, Shield, Trash2 } from "lucide-react";
 import { toast } from "sonner";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { AccessGuard } from "@/components/access/access-guard";
 import { ApiError } from "@/lib/api-client";
-import { MasterDataItem } from "@/lib/api/master-data";
+import { RequestBuilder } from "@/components/requests/request-builder";
+import { requestIcon } from "@/lib/request-icons";
 import {
-  RequestTypeMeta, emptyRequestTypeMeta, getRequestTypeMeta,
-  listRequestTypes, createRequestType, updateRequestType, deleteRequestType,
-} from "@/lib/api/requests";
-import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
-import { getFormDefinitions, formLabel, FormDefinition } from "@/lib/api/forms";
-import { getWorkflowDefinitions, workflowLabel, WorkflowDefinition } from "@/lib/api/workflows";
-import { getDocumentTemplates, documentLabel, DocumentTemplate } from "@/lib/api/documents";
-import { REQUEST_ICONS, REQUEST_ICON_KEYS, REQUEST_COLORS, requestIcon } from "@/lib/request-icons";
+  RequestTypeListItem, deleteRequestType, duplicateRequestType, listRequestTypes,
+  setRequestTypeActive,
+} from "@/lib/api/request-types";
 
 function notifyError(err: unknown, fallback: string) {
-  if (!(err instanceof ApiError) || ![401, 403, 500].includes(err.status)) {
-    toast.error(err instanceof ApiError ? err.message : fallback);
-  }
+  toast.error(err instanceof ApiError ? err.message : fallback);
 }
 
-interface BuilderForm extends RequestTypeMeta {
-  code: string;
-  nameAr: string;
-  nameEn: string;
-  description: string;
-  icon: string;
-  color: string;
-  isActive: boolean;
-}
-
-const emptyForm: BuilderForm = {
-  ...emptyRequestTypeMeta,
-  code: "", nameAr: "", nameEn: "", description: "",
-  icon: "file-text", color: REQUEST_COLORS[0], isActive: true,
-};
-
+/**
+ * Request-type settings.
+ *
+ * Reads the real RequestType entity via /api/platform/request-types. It previously read
+ * MasterDataItem rows with ObjectType=RequestType — rows no backend code ever consumed, while the
+ * Request Center ran off engine_request_types. Editing a request type here changed nothing that an
+ * actual request did.
+ */
 export default function RequestTypesPage() {
-  const [items, setItems] = useState<MasterDataItem[]>([]);
-  const [categories, setCategories] = useState<LookupItem[]>([]);
-  const [forms, setForms] = useState<FormDefinition[]>([]);
-  const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
-  const [documents, setDocuments] = useState<DocumentTemplate[]>([]);
+  return (
+    <AccessGuard anyOf={["Platform.Workflows.View"]}>
+      <RequestTypesInner />
+    </AccessGuard>
+  );
+}
+
+function RequestTypesInner() {
+  const [items, setItems] = useState<RequestTypeListItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+  // undefined = list view · null = builder for a new type · string = builder for that id
+  const [builderFor, setBuilderFor] = useState<string | null | undefined>(undefined);
+  const [busy, setBusy] = useState<string | null>(null);
 
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<MasterDataItem | null>(null);
-  const [form, setForm] = useState<BuilderForm>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<MasterDataItem | null>(null);
-  const [deleting, setDeleting] = useState(false);
-
-  const loadItems = useCallback(async () => {
-    try { setItems(await listRequestTypes()); }
-    catch (err) { notifyError(err, "تعذر تحميل أنواع الطلبات"); }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+    try { setItems(await listRequestTypes(true)); }
+    catch { setError(true); }
+    finally { setLoading(false); }
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      try {
-        // Forms/workflows/documents may 403 for limited roles — degrade gracefully.
-        const [its, cats] = await Promise.all([listRequestTypes(), getLookup("request-categories")]);
-        setItems(its); setCategories(cats);
-        const [fs, wf, dt] = await Promise.allSettled([getFormDefinitions(), getWorkflowDefinitions(), getDocumentTemplates()]);
-        if (fs.status === "fulfilled") setForms(fs.value);
-        if (wf.status === "fulfilled") setWorkflows(wf.value);
-        if (dt.status === "fulfilled") setDocuments(dt.value);
-      } catch (err) { notifyError(err, "تعذر تحميل البيانات"); }
-      finally { setLoading(false); }
-    })();
-  }, []);
+  useEffect(() => { queueMicrotask(() => { load(); }); }, [load]);
 
-  const catName = useMemo(() => {
-    const m = new Map(categories.map((c) => [c.id, lookupLabel(c)]));
-    return (id?: string) => (id ? m.get(id) ?? "—" : "—");
-  }, [categories]);
-
-  function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
-  function openEdit(i: MasterDataItem) {
-    setEditing(i);
-    const meta = getRequestTypeMeta(i);
-    setForm({
-      ...meta,
-      code: i.code, nameAr: i.nameAr, nameEn: i.nameEn, description: i.description ?? "",
-      icon: i.icon ?? "file-text", color: i.color ?? REQUEST_COLORS[0], isActive: i.isActive,
-    });
-    setDialogOpen(true);
-  }
-
-  async function save() {
-    if (!form.nameAr.trim() || !form.nameEn.trim()) { toast.error("الاسم بالعربية والإنجليزية مطلوبان"); return; }
-    if (!editing && !form.code.trim()) { toast.error("الرمز مطلوب"); return; }
-    setSaving(true);
+  const onDuplicate = async (t: RequestTypeListItem) => {
+    setBusy(t.id);
     try {
-      const wf = workflows.find((w) => w.id === form.workflowDefinitionId);
-      const meta: RequestTypeMeta = {
-        categoryId: form.categoryId,
-        formDefinitionId: form.formDefinitionId,
-        workflowDefinitionId: form.workflowDefinitionId,
-        workflowCode: wf?.code ?? "",
-        slaHours: form.slaHours === null || Number.isNaN(form.slaHours) ? null : Number(form.slaHours),
-        generatesDocument: form.generatesDocument,
-        documentTemplateId: form.generatesDocument ? form.documentTemplateId : "",
-        updatesEmployee: form.updatesEmployee,
-        updatesAttendance: form.updatesAttendance,
-        updatesPayroll: form.updatesPayroll,
-      };
-      const payload = {
-        code: form.code.trim().toUpperCase(),
-        nameAr: form.nameAr.trim(),
-        nameEn: form.nameEn.trim(),
-        description: form.description.trim() || undefined,
-        icon: form.icon,
-        color: form.color,
-        isActive: form.isActive,
-        metadata: meta as unknown as Record<string, unknown>,
-      };
-      if (editing) { await updateRequestType(editing.id, payload); toast.success("تم تحديث نوع الطلب"); }
-      else { await createRequestType(payload); toast.success("تمت إضافة نوع الطلب"); }
-      setDialogOpen(false); await loadItems();
-    } catch (err) { notifyError(err, "تعذر حفظ نوع الطلب"); } finally { setSaving(false); }
-  }
+      const copy = await duplicateRequestType(t.id, {
+        nameAr: `${t.nameAr} (نسخة)`,
+        nameEn: `${t.nameEn} (Copy)`,
+      });
+      toast.success(`تم إنشاء نسخة قابلة للتعديل: ${copy.code}`);
+      await load();
+      setBuilderFor(copy.id);
+    } catch (e) { notifyError(e, "تعذر النسخ"); }
+    finally { setBusy(null); }
+  };
 
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try { await deleteRequestType(deleteTarget.id); toast.success("تم الحذف"); setDeleteTarget(null); await loadItems(); }
-    catch (err) { notifyError(err, "تعذر الحذف (قد يكون مستخدماً)"); } finally { setDeleting(false); }
-  }
+  const onDelete = async (t: RequestTypeListItem) => {
+    setBusy(t.id);
+    try {
+      await deleteRequestType(t.id);
+      toast.success("تم الحذف");
+      await load();
+    } catch (e) { notifyError(e, "تعذر الحذف"); }
+    finally { setBusy(null); }
+  };
 
-  const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground";
-  const sectionTitle = "text-xs font-bold uppercase tracking-wider text-primary border-b border-border pb-2";
+  const onToggleActive = async (t: RequestTypeListItem) => {
+    setBusy(t.id);
+    try {
+      await setRequestTypeActive(t.id, !t.isActive);
+      await load();
+    } catch (e) {
+      // Activation runs full server-side validation, so an incomplete configuration surfaces here
+      // rather than at submit time. Point at the builder instead of only reporting the failure.
+      notifyError(e, "تعذر التغيير — راجع إعدادات الطلب");
+    }
+    finally { setBusy(null); }
+  };
+
+  if (builderFor !== undefined) {
+    return (
+      <div className="space-y-4" dir="rtl">
+        <button onClick={() => { setBuilderFor(undefined); load(); }}
+          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+          <ArrowRight className="h-4 w-4" /> أنواع الطلبات
+        </button>
+        <RequestBuilder requestTypeId={builderFor ?? undefined} onSaved={() => load()} />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center gap-2 text-sm">
-        <Link href="/settings/requests" className="text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
-          <ArrowRight className="h-4 w-4" /> إعدادات الطلبات
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span>أنواع الطلبات</span>
-      </div>
-
-      <div className="flex items-center justify-between">
+    <div className="space-y-6" dir="rtl">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">أنواع الطلبات</h1>
-          <p className="text-sm text-muted-foreground mt-1">مُنشئ الطلبات — اربط كل نوع بنموذج ومسار موافقة وأثر دون كتابة كود</p>
+          <Link href="/settings/requests" className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground">
+            <ArrowRight className="h-4 w-4" /> إعدادات الطلبات
+          </Link>
+          <h1 className="mt-2 text-2xl font-bold">أنواع الطلبات</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            النموذج ومسار الموافقة والإجراءات التي تُنفَّذ بعد الاعتماد.
+          </p>
         </div>
-        <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> نوع طلب</Button>
+        <button onClick={() => setBuilderFor(null)}
+          className="inline-flex h-9 items-center gap-2 bg-primary px-3 text-sm text-primary-foreground hover:bg-primary/90">
+          <Plus className="h-4 w-4" /> طلب جديد
+        </button>
       </div>
 
-      <div className="border border-border">
-        <Table>
-          <TableHeader>
-            <TableRow className="border-border hover:bg-transparent">
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">النوع</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">الفئة</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">النموذج / المسار</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">SLA</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">الحالة</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground w-24"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline" /> جاري التحميل...</TableCell></TableRow>
-            ) : items.length === 0 ? (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">لا توجد أنواع طلبات</TableCell></TableRow>
-            ) : items.map((i) => {
-              const meta = getRequestTypeMeta(i);
-              const Icon = requestIcon(i.icon);
-              return (
-                <TableRow key={i.id} className="border-border hover:bg-card/50">
-                  <TableCell>
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-8 w-8 items-center justify-center shrink-0" style={{ backgroundColor: `${i.color ?? "#3b82f6"}1a`, color: i.color ?? "#3b82f6" }}>
-                        <Icon className="h-4 w-4" />
-                      </span>
-                      <div>
-                        <div className="font-medium">{i.nameAr}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{i.code}</div>
+      {loading ? (
+        <div className="flex justify-center border border-border bg-card p-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : error ? (
+        <div className="flex flex-col items-center border border-border bg-card p-12 text-center">
+          <p className="mb-2 text-sm text-muted-foreground">تعذر تحميل أنواع الطلبات</p>
+          <button onClick={load} className="text-sm underline hover:no-underline">إعادة المحاولة</button>
+        </div>
+      ) : items.length === 0 ? (
+        <div className="border border-dashed border-border bg-card p-12 text-center">
+          <p className="text-sm text-muted-foreground">
+            لا توجد أنواع طلبات. شغّل التهيئة من إعدادات الطلبات، أو أنشئ طلبًا جديدًا.
+          </p>
+        </div>
+      ) : (
+        <div className="border border-border bg-card overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-border text-right text-xs uppercase tracking-wider text-muted-foreground">
+                <th className="px-4 py-3 font-medium">الطلب</th>
+                <th className="px-4 py-3 font-medium">الإعداد</th>
+                <th className="px-4 py-3 font-medium">الإجراءات</th>
+                <th className="px-4 py-3 font-medium">الحالة</th>
+                <th className="px-4 py-3 font-medium">إدارة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((t) => {
+                const Icon = requestIcon(t.icon);
+                return (
+                  <tr key={t.id} className="border-b border-border/60 last:border-0 hover:bg-secondary/40">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className="inline-flex h-8 w-8 items-center justify-center border border-border"
+                          style={{ color: t.color ?? undefined }}>
+                          <Icon className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <div className="flex items-center gap-1.5 font-medium">
+                            {t.nameAr || t.nameEn}
+                            {t.isSystem && (
+                              <span title="طلب نظامي — لا يمكن حذفه"
+                                className="inline-flex items-center gap-1 border border-amber-500/40 bg-amber-500/10 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+                                <Shield className="h-3 w-3" /> نظامي
+                              </span>
+                            )}
+                          </div>
+                          <div className="font-mono text-xs text-muted-foreground">{t.code}</div>
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{catName(meta.categoryId)}</TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1" title="النموذج"><FileSignature className={`h-3.5 w-3.5 ${meta.formDefinitionId ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
-                      <span className="inline-flex items-center gap-1" title="مسار الموافقة"><GitBranch className={`h-3.5 w-3.5 ${meta.workflowDefinitionId ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {meta.slaHours ? <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {meta.slaHours}س</span> : "—"}
-                  </TableCell>
-                  <TableCell>
-                    {i.isActive
-                      ? <Badge variant="outline" className="text-xs bg-green-500/10 text-green-500 border-green-500/20">نشط</Badge>
-                      : <Badge variant="outline" className="text-xs bg-zinc-500/10 text-zinc-400 border-zinc-500/20">غير نشط</Badge>}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 justify-end">
-                      <button onClick={() => openEdit(i)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>
-                      {i.isSystemDefault
-                        ? <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/40" title="افتراضي"><Lock className="h-4 w-4" /></span>
-                        : <button onClick={() => setDeleteTarget(i)} className="h-8 w-8 inline-flex items-center justify-center text-destructive hover:text-destructive/80" title="حذف"><Trash2 className="h-4 w-4" /></button>}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </div>
-
-      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) setDialogOpen(false); }}>
-        <DialogContent className="sm:max-w-3xl">
-          <DialogHeader><DialogTitle>{editing ? "تعديل نوع طلب" : "نوع طلب جديد"}</DialogTitle></DialogHeader>
-          <div className="space-y-6 py-2 max-h-[70vh] overflow-y-auto pl-1">
-
-            {/* Identity */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>الهوية</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الرمز</Label>
-                  <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editing} className="bg-secondary border-border font-mono disabled:opacity-60" placeholder="LEAVE" />
-                </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer pt-6">
-                  <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> نشط
-                </label>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الاسم (عربي)</Label>
-                  <Input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الاسم (إنجليزي)</Label>
-                  <Input value={form.nameEn} onChange={(e) => setForm({ ...form, nameEn: e.target.value })} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2 sm:col-span-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الوصف</Label>
-                  <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} className="bg-secondary border-border" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الأيقونة</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REQUEST_ICON_KEYS.map((k) => {
-                      const Ic = REQUEST_ICONS[k];
-                      const sel = form.icon === k;
-                      return (
-                        <button key={k} type="button" onClick={() => setForm({ ...form, icon: k })}
-                          className={`h-8 w-8 inline-flex items-center justify-center border transition-colors ${sel ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
-                          <Ic className="h-4 w-4" />
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted-foreground">
+                      <div>{t.hasForm ? "نموذج ✓" : <span className="text-destructive">بدون نموذج</span>}</div>
+                      <div className="mt-0.5 flex items-center gap-1">
+                        <GitBranch className="h-3 w-3" />
+                        {t.hasWorkflow ? "مسار موافقة ✓" : <span className="text-destructive">بدون مسار</span>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">{t.effectCount}</td>
+                    <td className="px-4 py-3">
+                      <button onClick={() => onToggleActive(t)} disabled={busy === t.id}
+                        className={`border px-2 py-0.5 text-xs disabled:opacity-50 ${
+                          t.isActive
+                            ? "border-green-600/30 bg-green-600/10 text-green-700 dark:text-green-400"
+                            : "border-border bg-secondary text-muted-foreground"}`}>
+                        {t.isActive ? "مفعّل" : "غير مفعّل"}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => setBuilderFor(t.id)} title="تعديل"
+                          className="inline-flex h-8 items-center gap-1.5 border border-border bg-secondary px-2.5 text-xs hover:bg-secondary/70">
+                          <Pencil className="h-3.5 w-3.5" /> تعديل
                         </button>
-                      );
-                    })}
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">اللون</Label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {REQUEST_COLORS.map((c) => (
-                      <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
-                        className={`h-8 w-8 border-2 transition-transform ${form.color === c ? "border-foreground scale-110" : "border-transparent"}`}
-                        style={{ backgroundColor: c }} aria-label={c} />
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Classification + form + workflow */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>التصنيف والمعالجة</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الفئة</Label>
-                  <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className={selectClass}>
-                    <option value="">— بدون فئة —</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{lookupLabel(c)}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">مدة الإنجاز SLA (ساعات)</Label>
-                  <Input type="number" min={0} value={form.slaHours ?? ""} onChange={(e) => setForm({ ...form, slaHours: e.target.value === "" ? null : Number(e.target.value) })} className="bg-secondary border-border" placeholder="48" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">النموذج المرتبط</Label>
-                  <select value={form.formDefinitionId} onChange={(e) => setForm({ ...form, formDefinitionId: e.target.value })} className={selectClass}>
-                    <option value="">— بدون نموذج —</option>
-                    {forms.map((f) => <option key={f.id} value={f.id}>{formLabel(f)}</option>)}
-                  </select>
-                  {forms.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد نماذج معرّفة بعد.</p>}
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">مسار الموافقة</Label>
-                  <select value={form.workflowDefinitionId} onChange={(e) => setForm({ ...form, workflowDefinitionId: e.target.value })} className={selectClass}>
-                    <option value="">— بدون مسار —</option>
-                    {workflows.map((w) => <option key={w.id} value={w.id}>{workflowLabel(w)}</option>)}
-                  </select>
-                  {workflows.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد مسارات معرّفة بعد.</p>}
-                </div>
-              </div>
-            </div>
-
-            {/* Document */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>المستند الناتج</div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={form.generatesDocument} onChange={(e) => setForm({ ...form, generatesDocument: e.target.checked })} />
-                يُنشئ مستنداً عند الاكتمال
-              </label>
-              {form.generatesDocument && (
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">قالب المستند</Label>
-                  <select value={form.documentTemplateId} onChange={(e) => setForm({ ...form, documentTemplateId: e.target.value })} className={selectClass}>
-                    <option value="">— اختر قالباً —</option>
-                    {documents.map((d) => <option key={d.id} value={d.id}>{documentLabel(d)}</option>)}
-                  </select>
-                  {documents.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد قوالب مستندات معرّفة بعد.</p>}
-                </div>
-              )}
-            </div>
-
-            {/* Impact */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>الأثر عند الموافقة</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesEmployee} onChange={(e) => setForm({ ...form, updatesEmployee: e.target.checked })} /> يُحدّث ملف الموظف
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesAttendance} onChange={(e) => setForm({ ...form, updatesAttendance: e.target.checked })} /> يؤثر على الحضور
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesPayroll} onChange={(e) => setForm({ ...form, updatesPayroll: e.target.checked })} /> يؤثر على الرواتب
-                </label>
-              </div>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>إلغاء</Button>
-            <Button onClick={save} disabled={saving} className="font-bold">{saving ? "جاري الحفظ..." : "حفظ"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}>
-        <DialogContent showCloseButton={false}>
-          <DialogHeader>
-            <DialogTitle>حذف نوع طلب</DialogTitle>
-            <DialogDescription>هل أنت متأكد من حذف <span className="font-bold text-foreground">{deleteTarget?.nameAr}</span>؟</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteTarget(null)} disabled={deleting}>إلغاء</Button>
-            <Button onClick={confirmDelete} disabled={deleting} className="bg-destructive text-white hover:bg-destructive/90">{deleting ? "جاري الحذف..." : "حذف"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                        <button onClick={() => onDuplicate(t)} disabled={busy === t.id}
+                          title="إنشاء نسخة مخصّصة قابلة للتعديل بالكامل"
+                          className="inline-flex h-8 w-8 items-center justify-center border border-border bg-secondary disabled:opacity-50">
+                          {busy === t.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Copy className="h-3.5 w-3.5" />}
+                        </button>
+                        {/* Disabled from canDelete, but the API refuses it regardless — the icon
+                            change is a hint, not the enforcement. */}
+                        <button onClick={() => onDelete(t)} disabled={!t.canDelete || busy === t.id}
+                          title={t.canDelete ? "حذف" : "طلب نظامي — لا يمكن حذفه. انسخه بدلاً من ذلك."}
+                          className="inline-flex h-8 w-8 items-center justify-center border border-border bg-secondary text-destructive disabled:opacity-40">
+                          {t.canDelete ? <Trash2 className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
