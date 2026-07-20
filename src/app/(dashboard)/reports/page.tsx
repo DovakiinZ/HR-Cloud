@@ -2,19 +2,29 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { BarChart3, FileSpreadsheet, FileText, FileType, Loader2, Pin, RefreshCw, Settings2, Share2, Sparkles, Star, Tag as TagIcon, Zap } from "lucide-react";
+import { BarChart3, FileSpreadsheet, FileText, FileType, Loader2, Pin, RefreshCw, Search, Settings2, Share2, Sparkles, Star, Tag as TagIcon, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { usePermission } from "@/lib/permissions";
 import {
   getReports, exportReport, getReportFolders, getReportTags, getReportShares,
   toggleReportFavorite, toggleReportPin, setReportFolder, assignReportTag, unassignReportTag,
   seedSystemReports, seedReportableObjects,
-  ReportDefinition, ExportFormat, ReportFolder, ReportTag, ReportShare,
+  ReportDefinition, ExportFormat, ReportFolder, ReportTag, ReportShare, ReportScope,
 } from "@/lib/api/reports";
 import { ReportsSidebar } from "@/components/reports/reports-sidebar";
 import { ReportShareDialog } from "@/components/reports/share-dialog";
 
 type View = "" | "favorites" | "recent" | "pinned";
+
+const PAGE_SIZE = 25;
+
+const SCOPES: { key: "" | ReportScope; label: string }[] = [
+  { key: "", label: "كل النطاقات" },
+  { key: "Personal", label: "شخصي" },
+  { key: "Department", label: "إدارة" },
+  { key: "Company", label: "شركة" },
+  { key: "Shared", label: "مشترك" },
+];
 
 const FORMATS: { key: ExportFormat; label: string; icon: typeof FileText }[] = [
   { key: "excel", label: "Excel", icon: FileSpreadsheet },
@@ -29,6 +39,7 @@ export default function ReportsPage() {
   const { allowed: canEdit } = usePermission("Platform.Reports.Edit");
 
   const [reports, setReports] = useState<ReportDefinition[]>([]);
+  const [standard, setStandard] = useState<ReportDefinition[]>([]);
   const [folders, setFolders] = useState<ReportFolder[]>([]);
   const [tags, setTags] = useState<ReportTag[]>([]);
   const [view, setView] = useState<View>("");
@@ -41,20 +52,60 @@ export default function ReportsPage() {
   const [tagPanel, setTagPanel] = useState<string | null>(null); // reportId whose tag panel is open
   const [share, setShare] = useState<{ report: ReportDefinition; shares: ReportShare[] } | null>(null);
 
+  // `search` is what the user is typing; `debouncedSearch` is what the query actually uses.
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [scope, setScope] = useState<"" | ReportScope>("");
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(search.trim()); setPage(1); }, 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Every narrowing control resets to page 1 at the point of change rather than in an effect:
+  // staying on page 4 of a smaller result set shows an empty table that reads as "no reports".
+  const applyView = (v: View) => { setView(v); setPage(1); };
+  const applyFolder = (id: string) => { setFolderId(id); setPage(1); };
+  const applyTag = (id: string) => { setTagId(id); setPage(1); };
+  const applyScope = (s: "" | ReportScope) => { setScope(s); setPage(1); };
+  const clearFilters = () => {
+    setSearch(""); setDebouncedSearch(""); setScope("");
+    setView(""); setFolderId(""); setTagId(""); setPage(1);
+  };
+
   const fetchReports = useCallback(async () => {
     setLoading(true); setError(false);
     try {
-      const res = await getReports({ pageSize: 100, view: view || undefined, folderId: folderId || undefined, tagId: tagId || undefined });
+      const res = await getReports({
+        page, pageSize: PAGE_SIZE,
+        view: view || undefined, folderId: folderId || undefined, tagId: tagId || undefined,
+        search: debouncedSearch || undefined, scope: scope || undefined,
+      });
       setReports(res.items ?? []);
+      setTotalCount(res.totalCount ?? 0);
+      setTotalPages(res.totalPages ?? 1);
     } catch { setError(true); }
     finally { setLoading(false); }
-  }, [view, folderId, tagId]);
+  }, [view, folderId, tagId, debouncedSearch, scope, page]);
 
   const fetchFolders = useCallback(() => { getReportFolders().then(setFolders).catch(() => {}); }, []);
   const fetchTags = useCallback(() => { getReportTags().then(setTags).catch(() => {}); }, []);
 
+  // The standard (SYS_*) shortcut cards are fetched on their own, unpaged. Deriving them from the
+  // paged table would scatter them across pages once the tenant has more than one page of reports.
+  // There is no server-side code-prefix filter, so this asks for a generous slice and filters here;
+  // the set is one report per registry subject, so it stays small.
+  const fetchStandard = useCallback(() => {
+    getReports({ pageSize: 100 })
+      .then((res) => setStandard((res.items ?? []).filter((r) => (r.code ?? "").startsWith("SYS_"))))
+      .catch(() => {});
+  }, []);
+
   useEffect(() => { queueMicrotask(() => { fetchReports(); }); }, [fetchReports]);
-  useEffect(() => { queueMicrotask(() => { fetchFolders(); fetchTags(); }); }, [fetchFolders, fetchTags]);
+  useEffect(() => { queueMicrotask(() => { fetchFolders(); fetchTags(); fetchStandard(); }); }, [fetchFolders, fetchTags, fetchStandard]);
 
   const doExport = async (report: ReportDefinition, format: ExportFormat) => {
     const key = `${report.id}:${format}`; setBusy(key);
@@ -67,7 +118,11 @@ export default function ReportsPage() {
   const togglePin = async (r: ReportDefinition) => { try { await toggleReportPin(r.id); await fetchReports(); } catch { toast.error("تعذر التحديث"); } };
   const moveFolder = async (r: ReportDefinition, fid: string) => { try { await setReportFolder(r.id, fid || null); await fetchReports(); toast.success("تم النقل"); } catch { toast.error("تعذر النقل"); } };
   const toggleTag = async (r: ReportDefinition, tag: ReportTag, has: boolean) => {
-    try { has ? await unassignReportTag(r.id, tag.id) : await assignReportTag(r.id, tag.id); await fetchReports(); }
+    try {
+      if (has) await unassignReportTag(r.id, tag.id);
+      else await assignReportTag(r.id, tag.id);
+      await fetchReports();
+    }
     catch { toast.error("تعذر تحديث الوسوم"); }
   };
   const openShare = async (r: ReportDefinition) => {
@@ -88,15 +143,18 @@ export default function ReportsPage() {
       const res = await seedSystemReports();
       toast.success(res.created > 0 ? `تم تجهيز ${res.created} تقرير أساسي` : "لا توجد مواضيع متاحة");
       await fetchReports();
+      fetchStandard();   // the shortcut cards are a separate fetch — refresh them too
     } catch { toast.error("تعذر إنشاء التقارير الأساسية"); }
     finally { setSeeding(false); }
   };
 
-  // "التقارير الأساسية" (standard, auto-seeded) vs. everything else.
-  const standard = reports.filter((r) => (r.code ?? "").startsWith("SYS_"));
-  const custom = reports.filter((r) => !(r.code ?? "").startsWith("SYS_"));
-  const filtered = view || folderId || tagId; // when filtering, don't split — show the flat result
-  const tableRows = filtered ? reports : custom;
+  // Any narrowing at all hides the standard shortcut cards — they are a "start here" affordance for
+  // the unfiltered list, not a result set.
+  const filtered = Boolean(view || folderId || tagId || debouncedSearch || scope);
+  // The table is the paged server result verbatim. It is deliberately NOT filtered down to
+  // non-SYS_ rows: dropping rows client-side would make totalCount disagree with what is on screen
+  // and leave short pages.
+  const tableRows = reports;
 
   return (
     <div className="space-y-6" dir="rtl">
@@ -115,11 +173,39 @@ export default function ReportsPage() {
       <div className="flex flex-col gap-6 md:flex-row">
         <ReportsSidebar
           view={view} folderId={folderId} tagId={tagId} folders={folders} tags={tags} canEdit={canEdit}
-          onSelectView={setView} onSelectFolder={setFolderId} onSelectTag={setTagId}
+          onSelectView={applyView} onSelectFolder={applyFolder} onSelectTag={applyTag}
           onFoldersChanged={fetchFolders} onTagsChanged={fetchTags}
         />
 
         <div className="flex-1 min-w-0 space-y-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative flex-1 min-w-[12rem]">
+              <Search className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground" />
+              <input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="ابحث في التقارير…"
+                className="h-9 w-full border border-border bg-background pr-9 pl-3 text-sm"
+              />
+            </div>
+            <select
+              value={scope}
+              onChange={(e) => applyScope(e.target.value as "" | ReportScope)}
+              title="النطاق"
+              className="h-9 border border-border bg-background px-2 text-sm"
+            >
+              {SCOPES.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+            </select>
+            {filtered && (
+              <button
+                onClick={clearFilters}
+                className="h-9 border border-border bg-secondary px-3 text-xs hover:bg-secondary/70"
+              >
+                مسح المرشّحات
+              </button>
+            )}
+          </div>
+
           {/* التقارير الأساسية — auto-seeded standard reports, one-click launch */}
           {!filtered && !loading && !error && (
             <div className="space-y-2">
@@ -159,8 +245,8 @@ export default function ReportsPage() {
           ) : tableRows.length === 0 ? (
             <div className="border border-border bg-card p-12 flex flex-col items-center text-center">
               <BarChart3 className="h-12 w-12 text-muted-foreground mb-4" />
-              <h2 className="text-lg font-semibold mb-2">{filtered ? "لا توجد تقارير" : "لا توجد تقارير مخصّصة"}</h2>
-              <p className="text-sm text-muted-foreground">{filtered ? "لا توجد تقارير مطابقة للمرشّح الحالي." : "أنشئ تقريرك الأول عبر «تقرير جديد»."}</p>
+              <h2 className="text-lg font-semibold mb-2">لا توجد تقارير</h2>
+              <p className="text-sm text-muted-foreground">{filtered ? "لا توجد تقارير مطابقة للمرشّحات الحالية." : "أنشئ تقريرك الأول عبر «تقرير جديد»."}</p>
             </div>
           ) : (
             <div className="border border-border bg-card overflow-x-auto">
@@ -235,6 +321,31 @@ export default function ReportsPage() {
                   ))}
                 </tbody>
               </table>
+
+              {totalCount > PAGE_SIZE && (
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-3 text-xs">
+                  <span className="text-muted-foreground">
+                    {`عرض ${(page - 1) * PAGE_SIZE + 1}–${Math.min(page * PAGE_SIZE, totalCount)} من ${totalCount}`}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1 || loading}
+                      className="h-8 border border-border bg-secondary px-3 hover:bg-secondary/70 disabled:opacity-40"
+                    >
+                      السابق
+                    </button>
+                    <span className="px-2 text-muted-foreground">{`صفحة ${page} من ${totalPages}`}</span>
+                    <button
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages || loading}
+                      className="h-8 border border-border bg-secondary px-3 hover:bg-secondary/70 disabled:opacity-40"
+                    >
+                      التالي
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -7,6 +7,51 @@ import { createReportFolder, updateReportFolder, deleteReportFolder, createRepor
 
 type View = "" | "favorites" | "recent" | "pinned";
 
+interface FolderNode { folder: ReportFolder; children: FolderNode[] }
+
+/**
+ * Nests the flat `ReportFolder[]` by `parentFolderId`.
+ *
+ * Defensive on two counts, because the API does not guarantee either: a folder whose parent is
+ * missing (deleted, or outside the caller's visibility) is promoted to the root rather than
+ * silently vanishing, and a parent cycle is broken so the recursive render cannot stack-overflow.
+ */
+function buildFolderTree(folders: ReportFolder[]): FolderNode[] {
+  const nodes = new Map<string, FolderNode>(folders.map((f) => [f.id, { folder: f, children: [] }]));
+  const roots: FolderNode[] = [];
+
+  for (const f of folders) {
+    const node = nodes.get(f.id)!;
+    const parentId = f.parentFolderId ?? null;
+    const parent = parentId ? nodes.get(parentId) : undefined;
+
+    // Unknown parent → treat as a root, so the folder stays reachable.
+    if (!parent || parent === node) { roots.push(node); continue; }
+
+    // Walk up from the prospective parent; if we meet ourselves, this edge closes a cycle.
+    let cursor: FolderNode | undefined = parent;
+    let cyclic = false;
+    const seen = new Set<string>();
+    while (cursor) {
+      if (cursor === node) { cyclic = true; break; }
+      if (seen.has(cursor.folder.id)) break;   // pre-existing cycle above us
+      seen.add(cursor.folder.id);
+      const nextId: string | null = cursor.folder.parentFolderId ?? null;
+      cursor = nextId ? nodes.get(nextId) : undefined;
+    }
+
+    if (cyclic) roots.push(node);
+    else parent.children.push(node);
+  }
+
+  const byName = (a: FolderNode, b: FolderNode) =>
+    (a.folder.nameAr || a.folder.nameEn).localeCompare(b.folder.nameAr || b.folder.nameEn, "ar");
+  const sortDeep = (list: FolderNode[]) => { list.sort(byName); list.forEach((n) => sortDeep(n.children)); };
+  sortDeep(roots);
+
+  return roots;
+}
+
 export function ReportsSidebar({
   view, folderId, tagId, folders, tags, canEdit,
   onSelectView, onSelectFolder, onSelectTag, onFoldersChanged, onTagsChanged,
@@ -50,6 +95,41 @@ export function ReportsSidebar({
 
   const rowCls = (active: boolean) => `flex w-full items-center gap-2 px-2 py-1.5 text-sm text-right ${active ? "bg-primary/10 text-primary" : "hover:bg-secondary/60"}`;
 
+  const tree = buildFolderTree(folders);
+
+  const renderFolder = (node: FolderNode, depth = 0): React.ReactNode => {
+    const f = node.folder;
+    return (
+      <div key={f.id}>
+        <div className="group flex items-center">
+          {renaming === f.id ? (
+            <input autoFocus value={renameVal} onChange={(e) => setRenameVal(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") saveRename(f); if (e.key === "Escape") setRenaming(null); }}
+              onBlur={() => saveRename(f)} className="h-8 flex-1 border border-border bg-background px-2 text-sm" />
+          ) : (
+            <>
+              <button
+                onClick={() => { onSelectView(""); onSelectTag(""); onSelectFolder(f.id); }}
+                className={`${rowCls(folderId === f.id)} flex-1`}
+                // RTL: nesting indents from the right, so pad the inline start.
+                style={depth > 0 ? { paddingInlineStart: 8 + depth * 14 } : undefined}
+              >
+                <Folder className="h-4 w-4 shrink-0" /> <span className="truncate">{f.nameAr || f.nameEn}</span>
+              </button>
+              {canEdit && (
+                <span className="flex opacity-0 group-hover:opacity-100">
+                  <button title="إعادة تسمية" onClick={() => { setRenaming(f.id); setRenameVal(f.nameAr || f.nameEn); }} className="p-1 text-muted-foreground hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                  <button title="حذف" onClick={() => removeFolder(f.id)} className="p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
+                </span>
+              )}
+            </>
+          )}
+        </div>
+        {node.children.map((c) => renderFolder(c, depth + 1))}
+      </div>
+    );
+  };
+
   return (
     <aside className="w-full md:w-56 shrink-0 space-y-5">
       <div>
@@ -67,27 +147,7 @@ export function ReportsSidebar({
 
       <div>
         <p className="mb-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">المجلدات</p>
-        {folders.map((f) => (
-          <div key={f.id} className="group flex items-center">
-            {renaming === f.id ? (
-              <input autoFocus value={renameVal} onChange={(e) => setRenameVal(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") saveRename(f); if (e.key === "Escape") setRenaming(null); }}
-                onBlur={() => saveRename(f)} className="h-8 flex-1 border border-border bg-background px-2 text-sm" />
-            ) : (
-              <>
-                <button onClick={() => { onSelectView(""); onSelectTag(""); onSelectFolder(f.id); }} className={`${rowCls(folderId === f.id)} flex-1`}>
-                  <Folder className="h-4 w-4" /> {f.nameAr || f.nameEn}
-                </button>
-                {canEdit && (
-                  <span className="flex opacity-0 group-hover:opacity-100">
-                    <button title="إعادة تسمية" onClick={() => { setRenaming(f.id); setRenameVal(f.nameAr || f.nameEn); }} className="p-1 text-muted-foreground hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button title="حذف" onClick={() => removeFolder(f.id)} className="p-1 text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></button>
-                  </span>
-                )}
-              </>
-            )}
-          </div>
-        ))}
+        {tree.map((n) => renderFolder(n))}
         {canEdit && (
           <div className="mt-1 flex items-center gap-1">
             <input value={newFolder} onChange={(e) => setNewFolder(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") addFolder(); }} placeholder="مجلد جديد" className="h-8 flex-1 border border-border bg-background px-2 text-xs" />
