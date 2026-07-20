@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { ReportResult, ReportColumn, ReportGroup } from "@/lib/api/reports";
 import { formatValue, formatAggregate } from "./report-cell";
 
@@ -13,14 +15,27 @@ function fmt(v: unknown, column: ReportColumn): string {
 }
 
 function GroupRows({ group, columns, depth }: { group: ReportGroup; columns: ReportColumn[]; depth: number }) {
+  const [open, setOpen] = useState(true);
+
   return (
     <>
       <tr className="bg-secondary/60">
         <td colSpan={columns.length} className="px-4 py-2 font-semibold" style={{ paddingInlineStart: 16 + depth * 16 }}>
-          {group.label}
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            aria-expanded={open}
+            className="flex items-center gap-1.5 text-right hover:opacity-80"
+          >
+            {/* RTL: collapsed points to the start of the line, i.e. left. */}
+            {open ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronLeft className="h-4 w-4 shrink-0" />}
+            <span>{group.label}</span>
+            <span className="text-xs font-normal text-muted-foreground">({group.count})</span>
+          </button>
         </td>
       </tr>
-      {group.subGroups?.length
+
+      {open && (group.subGroups?.length
         ? group.subGroups.map((g, i) => <GroupRows key={i} group={g} columns={columns} depth={depth + 1} />)
         : group.rows.map((row, i) => (
             <tr key={i} className="border-b border-border/60">
@@ -28,7 +43,9 @@ function GroupRows({ group, columns, depth }: { group: ReportGroup; columns: Rep
                 <td key={c.code} className={`px-4 py-2 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>{fmt(row[c.code], c)}</td>
               ))}
             </tr>
-          ))}
+          )))}
+
+      {/* The subtotal stays visible when collapsed — it is the summary the collapse is for. */}
       <tr className="border-b border-border bg-secondary/30 text-sm font-medium">
         {columns.map((c, idx) => (
           <td key={c.code} className={`px-4 py-1.5 ${c.isMeasure ? "text-left tabular-nums" : ""}`}>
