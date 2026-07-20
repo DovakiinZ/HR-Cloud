@@ -66,3 +66,4 @@ backend/publish-out/
 # Backend publish output (deploy artifacts)
 backend/publish/
 .deploy/
+.e2e/
