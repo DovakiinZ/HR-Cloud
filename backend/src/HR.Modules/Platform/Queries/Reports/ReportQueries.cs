@@ -30,10 +30,36 @@ public class RunReportQueryHandler : IRequestHandler<RunReportQuery, ReportResul
     {
         await _access.EnsureCanReadAsync(request.Id, ct);
         var result = await _exec.RunAsync(request.Id, request.Page, request.PageSize, request.Parameters, ct);
-        var state = await ReportUserStateHelper.GetOrCreateAsync(_db, _user.UserId, request.Id, ct);
-        state.LastViewedAt = DateTime.UtcNow;
-        await _db.SaveChangesAsync(ct);
+        await StampLastViewedAsync(request.Id, ct);
         return result;
+    }
+
+    /// <summary>
+    /// Records "you last opened this report now". This is bookkeeping for the Recent view, so it
+    /// must never fail the run: the report has already executed and the caller is entitled to it.
+    ///
+    /// Two concurrent runs of the same report both see no user-state row, both insert, and the
+    /// second violates IX_engine_report_user_states_TenantId_UserId_ReportDefinitionId — a 500 that
+    /// loses the whole result over a timestamp. React's development double-invoke reproduces it on
+    /// a plain page load. On that collision the other request has already written the row, so
+    /// stamping it again is redundant; give up quietly rather than retry.
+    /// </summary>
+    private async Task StampLastViewedAsync(Guid reportId, CancellationToken ct)
+    {
+        try
+        {
+            var state = await ReportUserStateHelper.GetOrCreateAsync(_db, _user.UserId, reportId, ct);
+            state.LastViewedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Detach the row we failed to insert, or it is retried on the next SaveChanges made
+            // through this same scoped context and fails again there.
+            foreach (var entry in _db.ChangeTracker.Entries<ReportUserState>()
+                         .Where(e => e.State == EntityState.Added).ToList())
+                entry.State = EntityState.Detached;
+        }
     }
 }
 
