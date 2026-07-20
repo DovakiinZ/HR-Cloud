@@ -275,7 +275,7 @@ public sealed class ReportSeeder : IReportSeeder
             }
 
             var objectDefId = await EnsureObjectDefinitionAsync(spec.ObjectCode, resolved, ct);
-            var report = BuildReport(spec, resolved, columns, objectDefId);
+            var report = BuildReport(spec, resolved, columns, objectDefId, _user.UserId);
             _db.Set<ReportDefinition>().Add(report);
             anyWritten = true;
 
@@ -318,7 +318,7 @@ public sealed class ReportSeeder : IReportSeeder
         return def.Id;
     }
 
-    private static ReportDefinition BuildReport(Spec spec, ResolvedObject resolved, List<Col> columns, Guid objectDefId)
+    private static ReportDefinition BuildReport(Spec spec, ResolvedObject resolved, List<Col> columns, Guid objectDefId, Guid ownerId)
     {
         var report = new ReportDefinition
         {
@@ -329,6 +329,9 @@ public sealed class ReportSeeder : IReportSeeder
             ReportType = spec.Type,
             Scope = ReportScope.Company,
             PrimaryObjectId = objectDefId,
+            // Without an owner the report is readable (Company scope) but editable by nobody, since
+            // CanEdit is "owner OR share". Matches how SeedSystemReports stamps its SYS_* reports.
+            OwnerId = ownerId,
             IsPublished = true,
             IsActive = true,
             Version = 1,

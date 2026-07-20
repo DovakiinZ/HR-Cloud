@@ -1,6 +1,7 @@
 using System.Text.Json.Serialization;
 using AutoMapper;
 using HR.Application.Common.Exceptions;
+using HR.Application.Common.Interfaces;
 using HR.Domain.Engines.Reports;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
@@ -127,11 +128,14 @@ public record CreateReportTemplateCommand : IRequest<ReportTemplateDto>
 
 public class CreateReportCommandHandler : IRequestHandler<CreateReportCommand, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public CreateReportCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly ICurrentUserService _user;
+    public CreateReportCommandHandler(ApplicationDbContext context, IMapper mapper, ICurrentUserService user) { _context = context; _mapper = mapper; _user = user; }
     public async Task<ReportDefinitionDto> Handle(CreateReportCommand request, CancellationToken ct)
     {
-        var entity = new ReportDefinition { Code = request.Code, NameEn = request.NameEn, NameAr = request.NameAr, Description = request.Description, ReportType = request.ReportType, Scope = request.Scope, PrimaryObjectId = request.PrimaryObjectId, TemplateId = request.TemplateId };
+        // OwnerId is what makes the creator able to edit their own report: ReportAccessResolver.CanEdit
+        // is "owner OR a share granting edit". Leaving it null produced ownerless reports that nobody
+        // could edit once the edit guard below started being enforced.
+        var entity = new ReportDefinition { Code = request.Code, NameEn = request.NameEn, NameAr = request.NameAr, Description = request.Description, ReportType = request.ReportType, Scope = request.Scope, PrimaryObjectId = request.PrimaryObjectId, TemplateId = request.TemplateId, OwnerId = _user.UserId };
         _context.Set<ReportDefinition>().Add(entity);
         await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportDefinitionDto>(entity);
@@ -140,10 +144,11 @@ public class CreateReportCommandHandler : IRequestHandler<CreateReportCommand, R
 
 public class UpdateReportCommandHandler : IRequestHandler<UpdateReportCommand, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public UpdateReportCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public UpdateReportCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportDefinitionDto> Handle(UpdateReportCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.Id, ct);
         var entity = await _context.Set<ReportDefinition>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportDefinition", request.Id);
         entity.NameEn = request.NameEn; entity.NameAr = request.NameAr; entity.Description = request.Description; entity.ReportType = request.ReportType; entity.Scope = request.Scope;
         await _context.SaveChangesAsync(ct);
@@ -153,10 +158,11 @@ public class UpdateReportCommandHandler : IRequestHandler<UpdateReportCommand, R
 
 public class DeleteReportCommandHandler : IRequestHandler<DeleteReportCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.Id, ct);
         var entity = await _context.Set<ReportDefinition>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportDefinition", request.Id);
         entity.IsDeleted = true; entity.DeletedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync(ct);
@@ -165,10 +171,11 @@ public class DeleteReportCommandHandler : IRequestHandler<DeleteReportCommand>
 
 public class PublishReportCommandHandler : IRequestHandler<PublishReportCommand, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public PublishReportCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public PublishReportCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportDefinitionDto> Handle(PublishReportCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.Id, ct);
         var entity = await _context.Set<ReportDefinition>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportDefinition", request.Id);
         entity.IsPublished = true; entity.Version++;
         await _context.SaveChangesAsync(ct);
@@ -178,12 +185,15 @@ public class PublishReportCommandHandler : IRequestHandler<PublishReportCommand,
 
 public class CloneReportCommandHandler : IRequestHandler<CloneReportCommand, ReportDefinitionDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public CloneReportCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access; private readonly ICurrentUserService _user;
+    public CloneReportCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access, ICurrentUserService user) { _context = context; _mapper = mapper; _access = access; _user = user; }
     public async Task<ReportDefinitionDto> Handle(CloneReportCommand request, CancellationToken ct)
     {
+        // Read, not edit: copying a report you are allowed to see is legitimate, and the copy is
+        // yours. Requiring edit on the source would block cloning a shared read-only report.
+        await _access.EnsureCanReadAsync(request.SourceReportId, ct);
         var source = await _context.Set<ReportDefinition>().Include(r => r.Fields).Include(r => r.Filters).Include(r => r.Groupings).Include(r => r.Sortings).Include(r => r.Relationships).FirstOrDefaultAsync(r => r.Id == request.SourceReportId, ct) ?? throw new NotFoundException("ReportDefinition", request.SourceReportId);
-        var clone = new ReportDefinition { Code = request.NewCode, NameEn = request.NameEn, NameAr = request.NameAr, Description = source.Description, ReportType = source.ReportType, Scope = ReportScope.Personal, PrimaryObjectId = source.PrimaryObjectId };
+        var clone = new ReportDefinition { Code = request.NewCode, NameEn = request.NameEn, NameAr = request.NameAr, Description = source.Description, ReportType = source.ReportType, Scope = ReportScope.Personal, PrimaryObjectId = source.PrimaryObjectId, OwnerId = _user.UserId };
         _context.Set<ReportDefinition>().Add(clone);
         await _context.SaveChangesAsync(ct);
         foreach (var f in source.Fields) _context.Set<ReportField>().Add(new ReportField { ReportDefinitionId = clone.Id, FieldType = f.FieldType, ObjectDefinitionId = f.ObjectDefinitionId, FieldCode = f.FieldCode, DisplayNameEn = f.DisplayNameEn, DisplayNameAr = f.DisplayNameAr, Aggregation = f.Aggregation, CalculationExpression = f.CalculationExpression, CalculationText = f.CalculationText, FormatPattern = f.FormatPattern, Width = f.Width, SortOrder = f.SortOrder, IsVisible = f.IsVisible });
@@ -200,10 +210,11 @@ public class CloneReportCommandHandler : IRequestHandler<CloneReportCommand, Rep
 
 public class AddReportFieldCommandHandler : IRequestHandler<AddReportFieldCommand, ReportFieldDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public AddReportFieldCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public AddReportFieldCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportFieldDto> Handle(AddReportFieldCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
         var calculationExpression = ReportFormulaCompiler.Compile(request.CalculationText, request.CalculationExpression);
         var entity = new ReportField { ReportDefinitionId = request.ReportDefinitionId, FieldType = request.FieldType, ObjectDefinitionId = request.ObjectDefinitionId, FieldCode = request.FieldCode, DisplayNameEn = request.DisplayNameEn, DisplayNameAr = request.DisplayNameAr, Aggregation = request.Aggregation, CalculationExpression = calculationExpression, CalculationText = request.CalculationText, FormatPattern = request.FormatPattern, Width = request.Width, SortOrder = request.SortOrder };
         _context.Set<ReportField>().Add(entity);
@@ -214,21 +225,25 @@ public class AddReportFieldCommandHandler : IRequestHandler<AddReportFieldComman
 
 public class DeleteReportFieldCommandHandler : IRequestHandler<DeleteReportFieldCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportFieldCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportFieldCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportFieldCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<ReportField>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportField", request.Id);
+        // The command carries only the child's id, so the owning report has to be resolved before
+        // the guard can run — a child id must never be a way around the parent's permissions.
+        await _access.EnsureCanEditAsync(entity.ReportDefinitionId, ct);
         _context.Set<ReportField>().Remove(entity); await _context.SaveChangesAsync(ct);
     }
 }
 
 public class AddReportFilterCommandHandler : IRequestHandler<AddReportFilterCommand, ReportFilterDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public AddReportFilterCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public AddReportFilterCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportFilterDto> Handle(AddReportFilterCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
         var entity = new ReportFilter { ReportDefinitionId = request.ReportDefinitionId, FieldCode = request.FieldCode, Operator = request.Operator, Value = request.Value, ValueTo = request.ValueTo, LogicalOperator = request.LogicalOperator, IsParameter = request.IsParameter };
         _context.Set<ReportFilter>().Add(entity);
         await _context.SaveChangesAsync(ct);
@@ -238,21 +253,25 @@ public class AddReportFilterCommandHandler : IRequestHandler<AddReportFilterComm
 
 public class DeleteReportFilterCommandHandler : IRequestHandler<DeleteReportFilterCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportFilterCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportFilterCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportFilterCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<ReportFilter>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportFilter", request.Id);
+        // The command carries only the child's id, so the owning report has to be resolved before
+        // the guard can run — a child id must never be a way around the parent's permissions.
+        await _access.EnsureCanEditAsync(entity.ReportDefinitionId, ct);
         _context.Set<ReportFilter>().Remove(entity); await _context.SaveChangesAsync(ct);
     }
 }
 
 public class AddReportGroupingCommandHandler : IRequestHandler<AddReportGroupingCommand, ReportGroupingDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public AddReportGroupingCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public AddReportGroupingCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportGroupingDto> Handle(AddReportGroupingCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
         var entity = new ReportGrouping { ReportDefinitionId = request.ReportDefinitionId, FieldCode = request.FieldCode, SortOrder = request.SortOrder };
         _context.Set<ReportGrouping>().Add(entity); await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportGroupingDto>(entity);
@@ -261,21 +280,25 @@ public class AddReportGroupingCommandHandler : IRequestHandler<AddReportGrouping
 
 public class DeleteReportGroupingCommandHandler : IRequestHandler<DeleteReportGroupingCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportGroupingCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportGroupingCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportGroupingCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<ReportGrouping>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportGrouping", request.Id);
+        // The command carries only the child's id, so the owning report has to be resolved before
+        // the guard can run — a child id must never be a way around the parent's permissions.
+        await _access.EnsureCanEditAsync(entity.ReportDefinitionId, ct);
         _context.Set<ReportGrouping>().Remove(entity); await _context.SaveChangesAsync(ct);
     }
 }
 
 public class AddReportSortingCommandHandler : IRequestHandler<AddReportSortingCommand, ReportSortingDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public AddReportSortingCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public AddReportSortingCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportSortingDto> Handle(AddReportSortingCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
         var entity = new ReportSorting { ReportDefinitionId = request.ReportDefinitionId, FieldCode = request.FieldCode, Direction = request.Direction, SortOrder = request.SortOrder };
         _context.Set<ReportSorting>().Add(entity); await _context.SaveChangesAsync(ct);
         return _mapper.Map<ReportSortingDto>(entity);
@@ -284,21 +307,25 @@ public class AddReportSortingCommandHandler : IRequestHandler<AddReportSortingCo
 
 public class DeleteReportSortingCommandHandler : IRequestHandler<DeleteReportSortingCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportSortingCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportSortingCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportSortingCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<ReportSorting>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportSorting", request.Id);
+        // The command carries only the child's id, so the owning report has to be resolved before
+        // the guard can run — a child id must never be a way around the parent's permissions.
+        await _access.EnsureCanEditAsync(entity.ReportDefinitionId, ct);
         _context.Set<ReportSorting>().Remove(entity); await _context.SaveChangesAsync(ct);
     }
 }
 
 public class AddReportScheduleCommandHandler : IRequestHandler<AddReportScheduleCommand, ReportScheduleDto>
 {
-    private readonly ApplicationDbContext _context; private readonly IMapper _mapper;
-    public AddReportScheduleCommandHandler(ApplicationDbContext context, IMapper mapper) { _context = context; _mapper = mapper; }
+    private readonly ApplicationDbContext _context; private readonly IMapper _mapper; private readonly IReportAccessService _access;
+    public AddReportScheduleCommandHandler(ApplicationDbContext context, IMapper mapper, IReportAccessService access) { _context = context; _mapper = mapper; _access = access; }
     public async Task<ReportScheduleDto> Handle(AddReportScheduleCommand request, CancellationToken ct)
     {
+        await _access.EnsureCanEditAsync(request.ReportDefinitionId, ct);
         var entity = new ReportSchedule
         {
             ReportDefinitionId = request.ReportDefinitionId,
@@ -319,11 +346,14 @@ public class AddReportScheduleCommandHandler : IRequestHandler<AddReportSchedule
 
 public class DeleteReportScheduleCommandHandler : IRequestHandler<DeleteReportScheduleCommand>
 {
-    private readonly ApplicationDbContext _context;
-    public DeleteReportScheduleCommandHandler(ApplicationDbContext context) { _context = context; }
+    private readonly ApplicationDbContext _context; private readonly IReportAccessService _access;
+    public DeleteReportScheduleCommandHandler(ApplicationDbContext context, IReportAccessService access) { _context = context; _access = access; }
     public async Task Handle(DeleteReportScheduleCommand request, CancellationToken ct)
     {
         var entity = await _context.Set<ReportSchedule>().FindAsync(new object[] { request.Id }, ct) ?? throw new NotFoundException("ReportSchedule", request.Id);
+        // The command carries only the child's id, so the owning report has to be resolved before
+        // the guard can run — a child id must never be a way around the parent's permissions.
+        await _access.EnsureCanEditAsync(entity.ReportDefinitionId, ct);
         _context.Set<ReportSchedule>().Remove(entity); await _context.SaveChangesAsync(ct);
     }
 }
