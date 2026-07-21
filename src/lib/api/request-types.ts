@@ -248,4 +248,4 @@ export const getAssignableAssets = (search?: string) =>
  */
 export interface RequestProvisioningResult { created?: number; upgraded?: number; unchanged?: number }
 export const provisionSystemRequestTypes = () =>
-  apiFetch<RequestProvisioningResult>("/api/platform/requests/provision", { method: "POST" });
+  apiFetch<RequestProvisioningResult>("/api/requests/provision", { method: "POST" });
