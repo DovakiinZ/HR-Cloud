@@ -17,7 +17,7 @@ import {
   RequestTypeMeta, emptyRequestTypeMeta, getRequestTypeMeta,
   listRequestTypes, createRequestType, updateRequestType, deleteRequestType,
 } from "@/lib/api/requests";
-import { listRequestTypeDefs, RequestTypeListItem } from "@/lib/api/request-types";
+import { listRequestTypeDefs, provisionSystemRequestTypes, RequestTypeListItem } from "@/lib/api/request-types";
 import { RequestEffectsDialog } from "@/components/requests/request-effects-dialog";
 import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
 import { getFormDefinitions, formLabel, FormDefinition } from "@/lib/api/forms";
@@ -66,6 +66,7 @@ export default function RequestTypesPage() {
   const [deleteTarget, setDeleteTarget] = useState<MasterDataItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [effectsFor, setEffectsFor] = useState<{ def: RequestTypeListItem; item: MasterDataItem } | null>(null);
+  const [provisioning, setProvisioning] = useState(false);
 
   const loadItems = useCallback(async () => {
     try { setItems(await listRequestTypes()); }
@@ -73,6 +74,18 @@ export default function RequestTypesPage() {
   }, []);
 
   const reloadDefs = useCallback(() => { listRequestTypeDefs().then(setDefs).catch(() => {}); }, []);
+
+  // Register/upgrade the built-in system request types in the effect engine so their ⚡ lights up.
+  const provision = useCallback(async () => {
+    setProvisioning(true);
+    try {
+      const res = await provisionSystemRequestTypes();
+      const n = (res.created ?? 0) + (res.upgraded ?? 0);
+      toast.success(n > 0 ? `تم تسجيل/تحديث ${n} نوع طلب في محرك الإجراءات` : "أنواع الطلبات النظامية مُسجّلة بالفعل");
+      reloadDefs();
+    } catch (err) { notifyError(err, "تعذّر تسجيل الأنواع (تحتاج صلاحية)"); }
+    finally { setProvisioning(false); }
+  }, [reloadDefs]);
 
   useEffect(() => {
     (async () => {
@@ -170,7 +183,14 @@ export default function RequestTypesPage() {
           <h1 className="text-2xl font-bold">أنواع الطلبات</h1>
           <p className="text-sm text-muted-foreground mt-1">مُنشئ الطلبات — اربط كل نوع بنموذج ومسار موافقة وأثر دون كتابة كود</p>
         </div>
-        <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> نوع طلب</Button>
+        <div className="flex items-center gap-2">
+          {canWfEdit && (
+            <Button variant="outline" onClick={provision} disabled={provisioning} className="h-10 gap-2 text-sm" title="تسجيل أنواع الطلبات النظامية في محرك الإجراءات لتفعيل زر «الإجراءات»">
+              {provisioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} تفعيل محرك الإجراءات
+            </Button>
+          )}
+          <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> نوع طلب</Button>
+        </div>
       </div>
 
       <div className="border border-border">
@@ -231,7 +251,7 @@ export default function RequestTypesPage() {
                             {def.effectCount > 0 && <span className="absolute -top-0.5 -left-0.5 h-3.5 min-w-3.5 px-0.5 rounded-full bg-primary text-[9px] font-bold text-primary-foreground inline-flex items-center justify-center">{def.effectCount}</span>}
                           </button>
                         ) : (
-                          <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/25" title="غير متاح في محرك الإجراءات (نوع غير مُسجّل)"><Zap className="h-4 w-4" /></span>
+                          <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/25" title="غير مُسجّل في محرك الإجراءات — اضغط «تفعيل محرك الإجراءات» أعلى الصفحة لتسجيل الأنواع النظامية"><Zap className="h-4 w-4" /></span>
                         );
                       })()}
                       <button onClick={() => openEdit(i)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>

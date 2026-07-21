@@ -203,3 +203,12 @@ export const getEffectCatalog = () => apiFetch<EffectAction[]>("/api/platform/ef
 
 export const getAssignableAssets = (search?: string) =>
   apiFetch<AssignableAsset[]>(`/api/platform/assets/assignable${search ? `?search=${encodeURIComponent(search)}` : ""}`);
+
+/**
+ * Idempotently provision this tenant's built-in system request types as RequestType entities
+ * (create what's missing, upgrade what's behind, touch nothing customised). This is what makes the
+ * standard request types show up in the effect builder. Needs Platform.MasterData.Create.
+ */
+export interface RequestProvisioningResult { created?: number; upgraded?: number; unchanged?: number }
+export const provisionSystemRequestTypes = () =>
+  apiFetch<RequestProvisioningResult>("/api/platform/requests/provision", { method: "POST" });
