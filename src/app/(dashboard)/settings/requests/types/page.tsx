@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, Clock, FileSignature, GitBranch } from "lucide-react";
+import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, Clock, FileSignature, GitBranch, Zap } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -11,11 +11,14 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ApiError } from "@/lib/api-client";
+import { usePermission } from "@/lib/permissions";
 import { MasterDataItem } from "@/lib/api/master-data";
 import {
   RequestTypeMeta, emptyRequestTypeMeta, getRequestTypeMeta,
   listRequestTypes, createRequestType, updateRequestType, deleteRequestType,
 } from "@/lib/api/requests";
+import { listRequestTypeDefs, RequestTypeListItem } from "@/lib/api/request-types";
+import { RequestEffectsDialog } from "@/components/requests/request-effects-dialog";
 import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
 import { getFormDefinitions, formLabel, FormDefinition } from "@/lib/api/forms";
 import { getWorkflowDefinitions, workflowLabel, WorkflowDefinition } from "@/lib/api/workflows";
@@ -45,11 +48,15 @@ const emptyForm: BuilderForm = {
 };
 
 export default function RequestTypesPage() {
+  const { allowed: canWfView } = usePermission("Platform.Workflows.View");
+  const { allowed: canWfEdit } = usePermission("Platform.Workflows.Edit");
+
   const [items, setItems] = useState<MasterDataItem[]>([]);
   const [categories, setCategories] = useState<LookupItem[]>([]);
   const [forms, setForms] = useState<FormDefinition[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [documents, setDocuments] = useState<DocumentTemplate[]>([]);
+  const [defs, setDefs] = useState<RequestTypeListItem[]>([]);   // RequestType entities (effect engine), by code
   const [loading, setLoading] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -58,27 +65,34 @@ export default function RequestTypesPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MasterDataItem | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [effectsFor, setEffectsFor] = useState<{ def: RequestTypeListItem; item: MasterDataItem } | null>(null);
 
   const loadItems = useCallback(async () => {
     try { setItems(await listRequestTypes()); }
     catch (err) { notifyError(err, "تعذر تحميل أنواع الطلبات"); }
   }, []);
 
+  const reloadDefs = useCallback(() => { listRequestTypeDefs().then(setDefs).catch(() => {}); }, []);
+
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        // Forms/workflows/documents may 403 for limited roles — degrade gracefully.
+        // Forms/workflows/documents/effect-defs may 403 for limited roles — degrade gracefully.
         const [its, cats] = await Promise.all([listRequestTypes(), getLookup("request-categories")]);
         setItems(its); setCategories(cats);
-        const [fs, wf, dt] = await Promise.allSettled([getFormDefinitions(), getWorkflowDefinitions(), getDocumentTemplates()]);
+        const [fs, wf, dt, rd] = await Promise.allSettled([getFormDefinitions(), getWorkflowDefinitions(), getDocumentTemplates(), listRequestTypeDefs()]);
         if (fs.status === "fulfilled") setForms(fs.value);
         if (wf.status === "fulfilled") setWorkflows(wf.value);
         if (dt.status === "fulfilled") setDocuments(dt.value);
+        if (rd.status === "fulfilled") setDefs(rd.value);
       } catch (err) { notifyError(err, "تعذر تحميل البيانات"); }
       finally { setLoading(false); }
     })();
   }, []);
+
+  // Match master-data request types to their RequestType entity (effect engine) by code.
+  const defByCode = useMemo(() => new Map(defs.map((d) => [d.code.toUpperCase(), d])), [defs]);
 
   const catName = useMemo(() => {
     const m = new Map(categories.map((c) => [c.id, lookupLabel(c)]));
@@ -209,6 +223,17 @@ export default function RequestTypesPage() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 justify-end">
+                      {canWfView && (() => {
+                        const def = defByCode.get(i.code.toUpperCase());
+                        return def ? (
+                          <button onClick={() => setEffectsFor({ def, item: i })} className="relative h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-primary" title="الإجراءات بعد الموافقة">
+                            <Zap className="h-4 w-4" />
+                            {def.effectCount > 0 && <span className="absolute -top-0.5 -left-0.5 h-3.5 min-w-3.5 px-0.5 rounded-full bg-primary text-[9px] font-bold text-primary-foreground inline-flex items-center justify-center">{def.effectCount}</span>}
+                          </button>
+                        ) : (
+                          <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/25" title="غير متاح في محرك الإجراءات (نوع غير مُسجّل)"><Zap className="h-4 w-4" /></span>
+                        );
+                      })()}
                       <button onClick={() => openEdit(i)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>
                       {i.isSystemDefault
                         ? <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/40" title="افتراضي"><Lock className="h-4 w-4" /></span>
@@ -367,6 +392,17 @@ export default function RequestTypesPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {effectsFor && (
+        <RequestEffectsDialog
+          requestTypeId={effectsFor.def.id}
+          requestTypeName={effectsFor.item.nameAr || effectsFor.item.nameEn}
+          requestTypeCode={effectsFor.def.code}
+          canEdit={canWfEdit}
+          onClose={() => setEffectsFor(null)}
+          onChanged={reloadDefs}
+        />
+      )}
     </div>
   );
 }
