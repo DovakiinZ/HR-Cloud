@@ -12,18 +12,29 @@ import {
   QuickFilterInput,
 } from "@/lib/api/reports";
 
-// Friendly, business-facing operator labels (only what the simple builder offers).
+// Friendly, business-facing operator labels.
 const OPERATOR_LABELS: Partial<Record<ReportFilterOperator, string>> = {
   Equals: "يساوي",
   NotEquals: "لا يساوي",
   Contains: "يحتوي على",
   StartsWith: "يبدأ بـ",
+  EndsWith: "ينتهي بـ",
   GreaterThan: "أكبر من",
   LessThan: "أصغر من",
   GreaterThanOrEqual: "أكبر أو يساوي",
   LessThanOrEqual: "أصغر أو يساوي",
   Between: "بين",
+  In: "ضمن (افصل بفواصل)",
+  NotIn: "ليس ضمن",
+  IsNull: "فارغ",
+  IsNotNull: "غير فارغ",
 };
+
+// Operators that take no value input.
+const VALUELESS_OPERATORS: ReportFilterOperator[] = ["IsNull", "IsNotNull"];
+
+// Field data types that should use a date picker.
+const DATE_TYPES = new Set(["Date", "DateTime"]);
 
 const SCOPES: { value: ReportScope; label: string }[] = [
   { value: "Company", label: "الشركة (يراه الجميع)" },
@@ -141,7 +152,8 @@ export default function NewSimpleReportPage() {
     if (!nameAr.trim()) { toast.error("أدخل اسم التقرير"); return; }
     setSaving(true);
     const payloadFilters: QuickFilterInput[] = filters
-      .filter((f) => f.isParameter || f.value.trim() !== "")
+      // Keep a filter if: it's value-less (IsNull/IsNotNull), a runtime parameter, or has a value.
+      .filter((f) => VALUELESS_OPERATORS.includes(f.operator) || f.isParameter || f.value.trim() !== "")
       .map((f) => ({
         fieldKey: f.fieldKey,
         operator: f.operator,
@@ -158,9 +170,13 @@ export default function NewSimpleReportPage() {
         filters: payloadFilters,
         groupByKeys: groupByKey ? [groupByKey] : [],
       });
-      const dropped = res.skippedFieldKeys.length + res.skippedFilterKeys.length;
-      if (dropped > 0) toast.warning(`تم إنشاء التقرير مع تجاهل ${dropped} حقلاً غير متوافق`);
-      else toast.success("تم إنشاء التقرير");
+      const droppedKeys = [...res.skippedFieldKeys, ...res.skippedFilterKeys];
+      if (droppedKeys.length > 0) {
+        const labels = droppedKeys.map((k) => byKey.get(k)?.labelAr ?? k).join("، ");
+        toast.warning(`تم إنشاء التقرير مع تجاهل: ${labels}`, { duration: 6000 });
+      } else {
+        toast.success("تم إنشاء التقرير");
+      }
       router.push(`/reports/${res.report.id}`);
     } catch {
       toast.error("تعذر إنشاء التقرير");
@@ -282,6 +298,8 @@ export default function NewSimpleReportPage() {
               {filters.map((row, i) => {
                 const f = byKey.get(row.fieldKey);
                 const ops = f?.allowedOperators ?? ["Equals"];
+                const valueless = VALUELESS_OPERATORS.includes(row.operator);
+                const inputType = f && DATE_TYPES.has(f.dataType) ? "date" : "text";
                 return (
                   <div key={i} className="flex flex-wrap items-center gap-2 border border-border bg-card p-2.5">
                     <select value={row.fieldKey} onChange={(e) => updateFilter(i, { fieldKey: e.target.value, operator: (byKey.get(e.target.value)?.allowedOperators[0] ?? "Equals") })}
@@ -292,15 +310,19 @@ export default function NewSimpleReportPage() {
                       className="h-8 border border-border bg-background px-2 text-sm">
                       {ops.filter((o) => OPERATOR_LABELS[o]).map((o) => <option key={o} value={o}>{OPERATOR_LABELS[o]}</option>)}
                     </select>
-                    <input value={row.value} onChange={(e) => updateFilter(i, { value: e.target.value })} placeholder="القيمة" disabled={row.isParameter}
-                      className="h-8 flex-1 min-w-24 border border-border bg-background px-2 text-sm disabled:opacity-50" />
-                    {row.operator === "Between" && (
-                      <input value={row.valueTo} onChange={(e) => updateFilter(i, { valueTo: e.target.value })} placeholder="إلى" disabled={row.isParameter}
-                        className="h-8 w-28 border border-border bg-background px-2 text-sm disabled:opacity-50" />
+                    {!valueless && (
+                      <input type={inputType} value={row.value} onChange={(e) => updateFilter(i, { value: e.target.value })} placeholder="القيمة" disabled={row.isParameter}
+                        className="h-8 flex-1 min-w-24 border border-border bg-background px-2 text-sm disabled:opacity-50" />
                     )}
-                    <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <input type="checkbox" checked={row.isParameter} onChange={(e) => updateFilter(i, { isParameter: e.target.checked })} /> اسأل عند التشغيل
-                    </label>
+                    {!valueless && row.operator === "Between" && (
+                      <input type={inputType} value={row.valueTo} onChange={(e) => updateFilter(i, { valueTo: e.target.value })} placeholder="إلى" disabled={row.isParameter}
+                        className="h-8 w-32 border border-border bg-background px-2 text-sm disabled:opacity-50" />
+                    )}
+                    {!valueless && (
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <input type="checkbox" checked={row.isParameter} onChange={(e) => updateFilter(i, { isParameter: e.target.checked })} /> اسأل عند التشغيل
+                      </label>
+                    )}
                     <button onClick={() => removeFilter(i)} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-4 w-4" /></button>
                   </div>
                 );

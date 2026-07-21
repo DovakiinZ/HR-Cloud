@@ -146,6 +146,11 @@ function Viewer({ id }: { id: string }) {
         <div className="border border-border bg-card p-12 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
+      ) : result && !result.groups?.length && !result.rows?.length ? (
+        <div className="border border-border bg-card p-12 flex flex-col items-center text-center">
+          <p className="text-sm font-medium mb-1">لا توجد نتائج مطابقة</p>
+          <p className="text-xs text-muted-foreground">جرّب تعديل معاملات التشغيل أو عوامل التصفية.</p>
+        </div>
       ) : result ? (
         <>
           <ReportTable result={result} />
