@@ -30,8 +30,11 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// <summary>
     /// The version of the built-in request catalogue. Bump this when a system request's required
     /// effects change; tenants below it are upgraded on the next provisioning pass.
+    ///
+    /// v2: resignation/clearance/complaint gained load-bearing Task.Create (+ requester
+    /// notification) effects, so existing tenants reconcile them on the next provision.
     /// </summary>
-    public const int CurrentSeedVersion = 1;
+    public const int CurrentSeedVersion = 2;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
