@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, Clock, FileSignature, GitBranch, Zap } from "lucide-react";
+import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, FileSignature, GitBranch, Zap, Copy, Power } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,11 +13,12 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogD
 import { ApiError } from "@/lib/api-client";
 import { usePermission } from "@/lib/permissions";
 import { MasterDataItem } from "@/lib/api/master-data";
+import { getRequestTypeMeta, listRequestTypes } from "@/lib/api/requests";
 import {
-  RequestTypeMeta, emptyRequestTypeMeta, getRequestTypeMeta,
-  listRequestTypes, createRequestType, updateRequestType, deleteRequestType,
-} from "@/lib/api/requests";
-import { listRequestTypeDefs, provisionSystemRequestTypes, RequestTypeListItem } from "@/lib/api/request-types";
+  listRequestTypeDefs, getRequestTypeDef, createRequestTypeDef, updateRequestTypeDef,
+  deleteRequestTypeDef, duplicateRequestTypeDef, setRequestTypeDefActive, provisionSystemRequestTypes,
+  RequestTypeListItem,
+} from "@/lib/api/request-types";
 import { RequestEffectsDialog } from "@/components/requests/request-effects-dialog";
 import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
 import { getFormDefinitions, formLabel, FormDefinition } from "@/lib/api/forms";
@@ -31,141 +32,178 @@ function notifyError(err: unknown, fallback: string) {
   }
 }
 
-interface BuilderForm extends RequestTypeMeta {
+interface FormState {
   code: string;
   nameAr: string;
   nameEn: string;
   description: string;
+  categoryId: string;
+  formDefinitionId: string;
+  workflowDefinitionId: string;
+  printTemplateId: string;
   icon: string;
   color: string;
-  isActive: boolean;
 }
 
-const emptyForm: BuilderForm = {
-  ...emptyRequestTypeMeta,
-  code: "", nameAr: "", nameEn: "", description: "",
-  icon: "file-text", color: REQUEST_COLORS[0], isActive: true,
+const emptyForm: FormState = {
+  code: "", nameAr: "", nameEn: "", description: "", categoryId: "",
+  formDefinitionId: "", workflowDefinitionId: "", printTemplateId: "",
+  icon: "file-text", color: REQUEST_COLORS[0],
 };
 
 export default function RequestTypesPage() {
-  const { allowed: canWfView } = usePermission("Platform.Workflows.View");
   const { allowed: canWfEdit } = usePermission("Platform.Workflows.Edit");
 
-  const [items, setItems] = useState<MasterDataItem[]>([]);
+  const [defs, setDefs] = useState<RequestTypeListItem[]>([]);
+  const [legacy, setLegacy] = useState<MasterDataItem[]>([]);   // master-data types with no engine entity
   const [categories, setCategories] = useState<LookupItem[]>([]);
   const [forms, setForms] = useState<FormDefinition[]>([]);
   const [workflows, setWorkflows] = useState<WorkflowDefinition[]>([]);
   const [documents, setDocuments] = useState<DocumentTemplate[]>([]);
-  const [defs, setDefs] = useState<RequestTypeListItem[]>([]);   // RequestType entities (effect engine), by code
   const [loading, setLoading] = useState(true);
 
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editing, setEditing] = useState<MasterDataItem | null>(null);
-  const [form, setForm] = useState<BuilderForm>(emptyForm);
+  const [editing, setEditing] = useState<RequestTypeListItem | null>(null);
+  const [form, setForm] = useState<FormState>(emptyForm);
   const [saving, setSaving] = useState(false);
-  const [deleteTarget, setDeleteTarget] = useState<MasterDataItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<RequestTypeListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [effectsFor, setEffectsFor] = useState<{ def: RequestTypeListItem; item: MasterDataItem } | null>(null);
+  const [effectsFor, setEffectsFor] = useState<RequestTypeListItem | null>(null);
   const [provisioning, setProvisioning] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);   // per-row action key
 
-  const loadItems = useCallback(async () => {
-    try { setItems(await listRequestTypes()); }
-    catch (err) { notifyError(err, "تعذر تحميل أنواع الطلبات"); }
+  const load = useCallback(async () => {
+    const [rd, md, cats] = await Promise.allSettled([listRequestTypeDefs(), listRequestTypes(), getLookup("request-categories")]);
+    const defList = rd.status === "fulfilled" ? rd.value : [];
+    setDefs(defList);
+    if (cats.status === "fulfilled") setCategories(cats.value);
+    if (md.status === "fulfilled") {
+      const codes = new Set(defList.map((d) => d.code.toUpperCase()));
+      setLegacy(md.value.filter((m) => !codes.has(m.code.toUpperCase())));
+    }
   }, []);
 
-  const reloadDefs = useCallback(() => { listRequestTypeDefs().then(setDefs).catch(() => {}); }, []);
-
-  // Register/upgrade the built-in system request types in the effect engine so their ⚡ lights up.
-  const provision = useCallback(async () => {
-    setProvisioning(true);
-    try {
-      const res = await provisionSystemRequestTypes();
-      const n = (res.created ?? 0) + (res.upgraded ?? 0);
-      toast.success(n > 0 ? `تم تسجيل/تحديث ${n} نوع طلب في محرك الإجراءات` : "أنواع الطلبات النظامية مُسجّلة بالفعل");
-      reloadDefs();
-    } catch (err) { notifyError(err, "تعذّر تسجيل الأنواع (تحتاج صلاحية)"); }
-    finally { setProvisioning(false); }
-  }, [reloadDefs]);
+  const reload = useCallback(() => { load().catch((e) => notifyError(e, "تعذر التحديث")); }, [load]);
 
   useEffect(() => {
     (async () => {
       setLoading(true);
       try {
-        // Forms/workflows/documents/effect-defs may 403 for limited roles — degrade gracefully.
-        const [its, cats] = await Promise.all([listRequestTypes(), getLookup("request-categories")]);
-        setItems(its); setCategories(cats);
-        const [fs, wf, dt, rd] = await Promise.allSettled([getFormDefinitions(), getWorkflowDefinitions(), getDocumentTemplates(), listRequestTypeDefs()]);
+        await load();
+        const [fs, wf, dt] = await Promise.allSettled([getFormDefinitions(), getWorkflowDefinitions(), getDocumentTemplates()]);
         if (fs.status === "fulfilled") setForms(fs.value);
         if (wf.status === "fulfilled") setWorkflows(wf.value);
         if (dt.status === "fulfilled") setDocuments(dt.value);
-        if (rd.status === "fulfilled") setDefs(rd.value);
       } catch (err) { notifyError(err, "تعذر تحميل البيانات"); }
       finally { setLoading(false); }
     })();
-  }, []);
-
-  // Match master-data request types to their RequestType entity (effect engine) by code.
-  const defByCode = useMemo(() => new Map(defs.map((d) => [d.code.toUpperCase(), d])), [defs]);
+  }, [load]);
 
   const catName = useMemo(() => {
     const m = new Map(categories.map((c) => [c.id, lookupLabel(c)]));
-    return (id?: string) => (id ? m.get(id) ?? "—" : "—");
+    return (id?: string | null) => (id ? m.get(id) ?? "—" : "—");
   }, [categories]);
 
   function openCreate() { setEditing(null); setForm(emptyForm); setDialogOpen(true); }
-  function openEdit(i: MasterDataItem) {
-    setEditing(i);
-    const meta = getRequestTypeMeta(i);
-    setForm({
-      ...meta,
-      code: i.code, nameAr: i.nameAr, nameEn: i.nameEn, description: i.description ?? "",
-      icon: i.icon ?? "file-text", color: i.color ?? REQUEST_COLORS[0], isActive: i.isActive,
-    });
-    setDialogOpen(true);
+
+  async function openEdit(d: RequestTypeListItem) {
+    setEditing(d); setForm(emptyForm); setDialogOpen(true);
+    try {
+      const full = await getRequestTypeDef(d.id);
+      setForm({
+        code: full.code, nameAr: full.nameAr, nameEn: full.nameEn,
+        description: full.descriptionAr ?? "", categoryId: full.categoryId ?? "",
+        formDefinitionId: full.formDefinitionId, workflowDefinitionId: full.workflowDefinitionId ?? "",
+        printTemplateId: full.printTemplateId ?? "", icon: full.icon ?? "file-text", color: full.color ?? REQUEST_COLORS[0],
+      });
+    } catch (err) { notifyError(err, "تعذر تحميل النوع"); setDialogOpen(false); }
   }
 
   async function save() {
     if (!form.nameAr.trim() || !form.nameEn.trim()) { toast.error("الاسم بالعربية والإنجليزية مطلوبان"); return; }
-    if (!editing && !form.code.trim()) { toast.error("الرمز مطلوب"); return; }
+    if (!editing) {
+      if (!form.code.trim()) { toast.error("الرمز مطلوب"); return; }
+      if (!form.formDefinitionId) { toast.error("النموذج مطلوب — لكل نوع طلب نموذج يملؤه الموظف"); return; }
+    }
     setSaving(true);
     try {
-      const wf = workflows.find((w) => w.id === form.workflowDefinitionId);
-      const meta: RequestTypeMeta = {
-        categoryId: form.categoryId,
-        formDefinitionId: form.formDefinitionId,
-        workflowDefinitionId: form.workflowDefinitionId,
-        workflowCode: wf?.code ?? "",
-        slaHours: form.slaHours === null || Number.isNaN(form.slaHours) ? null : Number(form.slaHours),
-        generatesDocument: form.generatesDocument,
-        documentTemplateId: form.generatesDocument ? form.documentTemplateId : "",
-        updatesEmployee: form.updatesEmployee,
-        updatesAttendance: form.updatesAttendance,
-        updatesPayroll: form.updatesPayroll,
-      };
-      const payload = {
-        code: form.code.trim().toUpperCase(),
-        nameAr: form.nameAr.trim(),
-        nameEn: form.nameEn.trim(),
-        description: form.description.trim() || undefined,
-        icon: form.icon,
-        color: form.color,
-        isActive: form.isActive,
-        metadata: meta as unknown as Record<string, unknown>,
-      };
-      if (editing) { await updateRequestType(editing.id, payload); toast.success("تم تحديث نوع الطلب"); }
-      else { await createRequestType(payload); toast.success("تمت إضافة نوع الطلب"); }
-      setDialogOpen(false); await loadItems();
+      if (editing) {
+        await updateRequestTypeDef(editing.id, {
+          nameAr: form.nameAr.trim(), nameEn: form.nameEn.trim(),
+          descriptionAr: form.description.trim() || null,
+          categoryId: form.categoryId || null,
+          workflowDefinitionId: form.workflowDefinitionId || null,
+          printTemplateId: form.printTemplateId || null,
+          icon: form.icon, color: form.color,
+        });
+        toast.success("تم تحديث نوع الطلب");
+      } else {
+        await createRequestTypeDef({
+          code: form.code.trim().toUpperCase(), nameAr: form.nameAr.trim(), nameEn: form.nameEn.trim(),
+          descriptionAr: form.description.trim() || null,
+          categoryId: form.categoryId || null,
+          formDefinitionId: form.formDefinitionId,
+          workflowDefinitionId: form.workflowDefinitionId || null,
+          icon: form.icon, color: form.color,
+        });
+        toast.success("تمت إضافة نوع الطلب");
+      }
+      setDialogOpen(false); reload();
     } catch (err) { notifyError(err, "تعذر حفظ نوع الطلب"); } finally { setSaving(false); }
+  }
+
+  async function toggleActive(d: RequestTypeListItem) {
+    setBusy(`act:${d.id}`);
+    try { await setRequestTypeDefActive(d.id, !d.isActive); toast.success(d.isActive ? "تم التعطيل" : "تم التفعيل"); reload(); }
+    catch (err) { notifyError(err, "تعذر تغيير الحالة"); } finally { setBusy(null); }
+  }
+
+  async function duplicate(d: RequestTypeListItem) {
+    setBusy(`dup:${d.id}`);
+    try {
+      const copy = await duplicateRequestTypeDef(d.id, { nameAr: `${d.nameAr} — نسخة`, nameEn: `${d.nameEn} (Copy)` });
+      toast.success("تم إنشاء نسخة");
+      reload();
+      setEffectsFor(copy);
+    } catch (err) { notifyError(err, "تعذر النسخ"); } finally { setBusy(null); }
   }
 
   async function confirmDelete() {
     if (!deleteTarget) return;
     setDeleting(true);
-    try { await deleteRequestType(deleteTarget.id); toast.success("تم الحذف"); setDeleteTarget(null); await loadItems(); }
+    try { await deleteRequestTypeDef(deleteTarget.id); toast.success("تم الحذف"); setDeleteTarget(null); reload(); }
     catch (err) { notifyError(err, "تعذر الحذف (قد يكون مستخدماً)"); } finally { setDeleting(false); }
   }
 
-  const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground";
+  async function registerLegacy(item: MasterDataItem) {
+    const meta = getRequestTypeMeta(item);
+    if (!meta.formDefinitionId) { toast.error("هذا النوع القديم بلا نموذج — أنشئه من جديد مع نموذج."); return; }
+    setBusy(`reg:${item.id}`);
+    try {
+      const created = await createRequestTypeDef({
+        code: item.code, nameAr: item.nameAr, nameEn: item.nameEn,
+        descriptionAr: item.description || null,
+        formDefinitionId: meta.formDefinitionId,
+        workflowDefinitionId: meta.workflowDefinitionId || null,
+        icon: item.icon || "file-text", color: item.color || REQUEST_COLORS[0],
+      });
+      toast.success("تم تفعيل النوع في محرك الطلبات");
+      reload();
+      setEffectsFor(created);
+    } catch (err) { notifyError(err, "تعذر التفعيل"); } finally { setBusy(null); }
+  }
+
+  async function provision() {
+    setProvisioning(true);
+    try {
+      const res = await provisionSystemRequestTypes();
+      const n = (res.created ?? 0) + (res.upgraded ?? 0);
+      toast.success(n > 0 ? `تم تسجيل/تحديث ${n} نوع طلب نظامي` : "الأنواع النظامية مُسجّلة بالفعل");
+      reload();
+    } catch (err) { notifyError(err, "تعذّر التسجيل (تحتاج صلاحية)"); } finally { setProvisioning(false); }
+  }
+
+  const selectClass = "w-full h-9 bg-secondary border border-border px-3 text-sm text-foreground disabled:opacity-60";
   const sectionTitle = "text-xs font-bold uppercase tracking-wider text-primary border-b border-border pb-2";
 
   return (
@@ -178,18 +216,18 @@ export default function RequestTypesPage() {
         <span>أنواع الطلبات</span>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">أنواع الطلبات</h1>
-          <p className="text-sm text-muted-foreground mt-1">مُنشئ الطلبات — اربط كل نوع بنموذج ومسار موافقة وأثر دون كتابة كود</p>
+          <p className="text-sm text-muted-foreground mt-1">مُنشئ الطلبات — لكل نوع نموذج ومسار موافقة وإجراءات تلقائية بعد الاعتماد، دون كتابة كود</p>
         </div>
         <div className="flex items-center gap-2">
           {canWfEdit && (
-            <Button variant="outline" onClick={provision} disabled={provisioning} className="h-10 gap-2 text-sm" title="تسجيل أنواع الطلبات النظامية في محرك الإجراءات لتفعيل زر «الإجراءات»">
-              {provisioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} تفعيل محرك الإجراءات
+            <Button variant="outline" onClick={provision} disabled={provisioning} className="h-10 gap-2 text-sm" title="تسجيل/تحديث أنواع الطلبات النظامية">
+              {provisioning ? <Loader2 className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />} الأنواع النظامية
             </Button>
           )}
-          <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> نوع طلب</Button>
+          {canWfEdit && <Button onClick={openCreate} className="h-10 gap-2 font-bold uppercase tracking-wider text-sm"><Plus className="h-4 w-4" /> نوع طلب</Button>}
         </div>
       </div>
 
@@ -200,64 +238,58 @@ export default function RequestTypesPage() {
               <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">النوع</TableHead>
               <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">الفئة</TableHead>
               <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">النموذج / المسار</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">SLA</TableHead>
+              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">الإجراءات</TableHead>
               <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">الحالة</TableHead>
-              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground w-24"></TableHead>
+              <TableHead className="text-right text-xs font-bold uppercase tracking-wider text-muted-foreground w-32"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin inline" /> جاري التحميل...</TableCell></TableRow>
-            ) : items.length === 0 ? (
-              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">لا توجد أنواع طلبات</TableCell></TableRow>
-            ) : items.map((i) => {
-              const meta = getRequestTypeMeta(i);
-              const Icon = requestIcon(i.icon);
+            ) : defs.length === 0 ? (
+              <TableRow className="hover:bg-transparent"><TableCell colSpan={6} className="py-12 text-center text-sm text-muted-foreground">
+                لا توجد أنواع طلبات — اضغط «الأنواع النظامية» لتسجيل الطلبات الجاهزة، أو «نوع طلب» لإنشاء نوع جديد.
+              </TableCell></TableRow>
+            ) : defs.map((d) => {
+              const Icon = requestIcon(d.icon);
               return (
-                <TableRow key={i.id} className="border-border hover:bg-card/50">
+                <TableRow key={d.id} className="border-border hover:bg-card/50">
                   <TableCell>
                     <div className="flex items-center gap-2">
-                      <span className="flex h-8 w-8 items-center justify-center shrink-0" style={{ backgroundColor: `${i.color ?? "#3b82f6"}1a`, color: i.color ?? "#3b82f6" }}>
+                      <span className="flex h-8 w-8 items-center justify-center shrink-0" style={{ backgroundColor: `${d.color ?? "#3b82f6"}1a`, color: d.color ?? "#3b82f6" }}>
                         <Icon className="h-4 w-4" />
                       </span>
                       <div>
-                        <div className="font-medium">{i.nameAr}</div>
-                        <div className="font-mono text-[10px] text-muted-foreground">{i.code}</div>
+                        <div className="font-medium flex items-center gap-1.5">{d.nameAr}{d.isSystem && <Badge variant="outline" className="text-[9px] text-muted-foreground">نظامي</Badge>}</div>
+                        <div className="font-mono text-[10px] text-muted-foreground">{d.code}</div>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{catName(meta.categoryId)}</TableCell>
+                  <TableCell className="text-sm text-muted-foreground">{catName(d.categoryId)}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                      <span className="inline-flex items-center gap-1" title="النموذج"><FileSignature className={`h-3.5 w-3.5 ${meta.formDefinitionId ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
-                      <span className="inline-flex items-center gap-1" title="مسار الموافقة"><GitBranch className={`h-3.5 w-3.5 ${meta.workflowDefinitionId ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
+                      <span title="النموذج"><FileSignature className={`h-3.5 w-3.5 ${d.hasForm ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
+                      <span title="مسار الموافقة"><GitBranch className={`h-3.5 w-3.5 ${d.hasWorkflow ? "text-green-500" : "text-muted-foreground/40"}`} /></span>
                     </div>
                   </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {meta.slaHours ? <span className="inline-flex items-center gap-1"><Clock className="h-3.5 w-3.5" /> {meta.slaHours}س</span> : "—"}
+                  <TableCell>
+                    <button onClick={() => setEffectsFor(d)} className="relative inline-flex items-center gap-1 border border-border px-2 h-7 text-xs hover:border-primary hover:text-primary" title="الإجراءات بعد الموافقة">
+                      <Zap className="h-3.5 w-3.5" /> {d.effectCount > 0 ? `${d.effectCount} إجراء` : "إضافة"}
+                    </button>
                   </TableCell>
                   <TableCell>
-                    {i.isActive
+                    {d.isActive
                       ? <Badge variant="outline" className="text-xs bg-green-500/10 text-green-500 border-green-500/20">نشط</Badge>
-                      : <Badge variant="outline" className="text-xs bg-zinc-500/10 text-zinc-400 border-zinc-500/20">غير نشط</Badge>}
+                      : <Badge variant="outline" className="text-xs bg-amber-500/10 text-amber-500 border-amber-500/20">مسودة</Badge>}
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 justify-end">
-                      {canWfView && (() => {
-                        const def = defByCode.get(i.code.toUpperCase());
-                        return def ? (
-                          <button onClick={() => setEffectsFor({ def, item: i })} className="relative h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-primary" title="الإجراءات بعد الموافقة">
-                            <Zap className="h-4 w-4" />
-                            {def.effectCount > 0 && <span className="absolute -top-0.5 -left-0.5 h-3.5 min-w-3.5 px-0.5 rounded-full bg-primary text-[9px] font-bold text-primary-foreground inline-flex items-center justify-center">{def.effectCount}</span>}
-                          </button>
-                        ) : (
-                          <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/25" title="غير مُسجّل في محرك الإجراءات — اضغط «تفعيل محرك الإجراءات» أعلى الصفحة لتسجيل الأنواع النظامية"><Zap className="h-4 w-4" /></span>
-                        );
-                      })()}
-                      <button onClick={() => openEdit(i)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>
-                      {i.isSystemDefault
-                        ? <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/40" title="افتراضي"><Lock className="h-4 w-4" /></span>
-                        : <button onClick={() => setDeleteTarget(i)} className="h-8 w-8 inline-flex items-center justify-center text-destructive hover:text-destructive/80" title="حذف"><Trash2 className="h-4 w-4" /></button>}
+                      {canWfEdit && <button onClick={() => toggleActive(d)} disabled={busy === `act:${d.id}`} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50" title={d.isActive ? "تعطيل" : "تفعيل"}>{busy === `act:${d.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}</button>}
+                      {canWfEdit && <button onClick={() => openEdit(d)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>}
+                      {canWfEdit && <button onClick={() => duplicate(d)} disabled={busy === `dup:${d.id}`} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50" title="نسخ وتخصيص">{busy === `dup:${d.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}</button>}
+                      {d.canDelete
+                        ? (canWfEdit && <button onClick={() => setDeleteTarget(d)} className="h-8 w-8 inline-flex items-center justify-center text-destructive hover:text-destructive/80" title="حذف"><Trash2 className="h-4 w-4" /></button>)
+                        : <span className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground/40" title="نظامي — لا يُحذف"><Lock className="h-4 w-4" /></span>}
                     </div>
                   </TableCell>
                 </TableRow>
@@ -267,22 +299,49 @@ export default function RequestTypesPage() {
         </Table>
       </div>
 
+      {/* Legacy master-data types with no engine entity — offer one-click migration, hide nothing. */}
+      {!loading && legacy.length > 0 && (
+        <div className="space-y-2">
+          <div className="text-xs font-bold uppercase tracking-wider text-amber-500">أنواع قديمة غير مفعّلة ({legacy.length})</div>
+          <p className="text-xs text-muted-foreground">هذه الأنواع من النظام القديم ولا يراها الموظفون. فعّلها لتنتقل إلى محرك الطلبات وتدعم الإجراءات.</p>
+          <div className="border border-dashed border-border divide-y divide-border">
+            {legacy.map((m) => (
+              <div key={m.id} className="flex items-center justify-between gap-3 px-3 py-2">
+                <div className="min-w-0">
+                  <span className="text-sm font-medium">{m.nameAr}</span>
+                  <span className="font-mono text-[10px] text-muted-foreground ms-2">{m.code}</span>
+                </div>
+                {canWfEdit && (
+                  <Button variant="outline" size="sm" onClick={() => registerLegacy(m)} disabled={busy === `reg:${m.id}`} className="gap-1.5 shrink-0">
+                    {busy === `reg:${m.id}` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />} تفعيل
+                  </Button>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Create / edit */}
       <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o && !saving) setDialogOpen(false); }}>
         <DialogContent className="sm:max-w-3xl">
           <DialogHeader><DialogTitle>{editing ? "تعديل نوع طلب" : "نوع طلب جديد"}</DialogTitle></DialogHeader>
           <div className="space-y-6 py-2 max-h-[70vh] overflow-y-auto pl-1">
-
             {/* Identity */}
             <div className="space-y-4">
               <div className={sectionTitle}>الهوية</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-wider">الرمز</Label>
-                  <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editing} className="bg-secondary border-border font-mono disabled:opacity-60" placeholder="LEAVE" />
+                  <Input value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} disabled={!!editing} className="bg-secondary border-border font-mono disabled:opacity-60" placeholder="LEAVE_REQUEST" />
                 </div>
-                <label className="flex items-center gap-2 text-sm cursor-pointer pt-6">
-                  <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} /> نشط
-                </label>
+                <div className="space-y-2">
+                  <Label className="text-xs font-bold uppercase tracking-wider">الفئة</Label>
+                  <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className={selectClass}>
+                    <option value="">— بدون فئة —</option>
+                    {categories.map((c) => <option key={c.id} value={c.id}>{lookupLabel(c)}</option>)}
+                  </select>
+                </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-wider">الاسم (عربي)</Label>
                   <Input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} className="bg-secondary border-border" />
@@ -299,8 +358,7 @@ export default function RequestTypesPage() {
                   <Label className="text-xs font-bold uppercase tracking-wider">الأيقونة</Label>
                   <div className="flex flex-wrap gap-1.5">
                     {REQUEST_ICON_KEYS.map((k) => {
-                      const Ic = REQUEST_ICONS[k];
-                      const sel = form.icon === k;
+                      const Ic = REQUEST_ICONS[k]; const sel = form.icon === k;
                       return (
                         <button key={k} type="button" onClick={() => setForm({ ...form, icon: k })}
                           className={`h-8 w-8 inline-flex items-center justify-center border transition-colors ${sel ? "border-primary text-primary bg-primary/10" : "border-border text-muted-foreground hover:text-foreground"}`}>
@@ -315,36 +373,25 @@ export default function RequestTypesPage() {
                   <div className="flex flex-wrap gap-1.5">
                     {REQUEST_COLORS.map((c) => (
                       <button key={c} type="button" onClick={() => setForm({ ...form, color: c })}
-                        className={`h-8 w-8 border-2 transition-transform ${form.color === c ? "border-foreground scale-110" : "border-transparent"}`}
-                        style={{ backgroundColor: c }} aria-label={c} />
+                        className={`h-8 w-8 border-2 transition-transform ${form.color === c ? "border-foreground scale-110" : "border-transparent"}`} style={{ backgroundColor: c }} aria-label={c} />
                     ))}
                   </div>
                 </div>
               </div>
             </div>
 
-            {/* Classification + form + workflow */}
+            {/* Form + workflow + document */}
             <div className="space-y-4">
-              <div className={sectionTitle}>التصنيف والمعالجة</div>
+              <div className={sectionTitle}>النموذج والمعالجة</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">الفئة</Label>
-                  <select value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} className={selectClass}>
-                    <option value="">— بدون فئة —</option>
-                    {categories.map((c) => <option key={c.id} value={c.id}>{lookupLabel(c)}</option>)}
-                  </select>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">مدة الإنجاز SLA (ساعات)</Label>
-                  <Input type="number" min={0} value={form.slaHours ?? ""} onChange={(e) => setForm({ ...form, slaHours: e.target.value === "" ? null : Number(e.target.value) })} className="bg-secondary border-border" placeholder="48" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">النموذج المرتبط</Label>
-                  <select value={form.formDefinitionId} onChange={(e) => setForm({ ...form, formDefinitionId: e.target.value })} className={selectClass}>
-                    <option value="">— بدون نموذج —</option>
+                  <Label className="text-xs font-bold uppercase tracking-wider">النموذج المرتبط {!editing && <span className="text-destructive">*</span>}</Label>
+                  <select value={form.formDefinitionId} onChange={(e) => setForm({ ...form, formDefinitionId: e.target.value })} disabled={!!editing} className={selectClass}>
+                    <option value="">— اختر نموذجاً —</option>
                     {forms.map((f) => <option key={f.id} value={f.id}>{formLabel(f)}</option>)}
                   </select>
-                  {forms.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد نماذج معرّفة بعد.</p>}
+                  {editing && <p className="text-[10px] text-muted-foreground">لا يمكن تغيير النموذج بعد الإنشاء.</p>}
+                  {!editing && forms.length === 0 && <p className="text-[10px] text-amber-500">لا توجد نماذج — أنشئ نموذجاً أولاً.</p>}
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-bold uppercase tracking-wider">مسار الموافقة</Label>
@@ -352,47 +399,25 @@ export default function RequestTypesPage() {
                     <option value="">— بدون مسار —</option>
                     {workflows.map((w) => <option key={w.id} value={w.id}>{workflowLabel(w)}</option>)}
                   </select>
-                  {workflows.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد مسارات معرّفة بعد.</p>}
                 </div>
+                {editing && (
+                  <div className="space-y-2 sm:col-span-2">
+                    <Label className="text-xs font-bold uppercase tracking-wider">قالب المستند (اختياري)</Label>
+                    <select value={form.printTemplateId} onChange={(e) => setForm({ ...form, printTemplateId: e.target.value })} className={selectClass}>
+                      <option value="">— بدون مستند —</option>
+                      {documents.map((d) => <option key={d.id} value={d.id}>{documentLabel(d)}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Document */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>المستند الناتج</div>
-              <label className="flex items-center gap-2 text-sm cursor-pointer">
-                <input type="checkbox" checked={form.generatesDocument} onChange={(e) => setForm({ ...form, generatesDocument: e.target.checked })} />
-                يُنشئ مستنداً عند الاكتمال
-              </label>
-              {form.generatesDocument && (
-                <div className="space-y-2">
-                  <Label className="text-xs font-bold uppercase tracking-wider">قالب المستند</Label>
-                  <select value={form.documentTemplateId} onChange={(e) => setForm({ ...form, documentTemplateId: e.target.value })} className={selectClass}>
-                    <option value="">— اختر قالباً —</option>
-                    {documents.map((d) => <option key={d.id} value={d.id}>{documentLabel(d)}</option>)}
-                  </select>
-                  {documents.length === 0 && <p className="text-[10px] text-muted-foreground">لا توجد قوالب مستندات معرّفة بعد.</p>}
-                </div>
-              )}
-            </div>
-
-            {/* Impact */}
-            <div className="space-y-4">
-              <div className={sectionTitle}>الأثر عند الموافقة</div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesEmployee} onChange={(e) => setForm({ ...form, updatesEmployee: e.target.checked })} /> يُحدّث ملف الموظف
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesAttendance} onChange={(e) => setForm({ ...form, updatesAttendance: e.target.checked })} /> يؤثر على الحضور
-                </label>
-                <label className="flex items-center gap-2 text-sm cursor-pointer border border-border px-3 py-2">
-                  <input type="checkbox" checked={form.updatesPayroll} onChange={(e) => setForm({ ...form, updatesPayroll: e.target.checked })} /> يؤثر على الرواتب
-                </label>
-              </div>
+            {/* Effects hint */}
+            <div className="border border-border bg-secondary/30 p-3 text-xs text-muted-foreground flex items-start gap-2">
+              <Zap className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <span>ما يحدث تلقائياً عند الموافقة (إنشاء إجازة/مصروف، إرسال إشعار…) يُضبط من زر <span className="text-foreground font-medium">«الإجراءات»</span> في صف النوع بعد الحفظ.</span>
             </div>
           </div>
-
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={saving}>إلغاء</Button>
             <Button onClick={save} disabled={saving} className="font-bold">{saving ? "جاري الحفظ..." : "حفظ"}</Button>
@@ -400,6 +425,7 @@ export default function RequestTypesPage() {
         </DialogContent>
       </Dialog>
 
+      {/* Delete confirm */}
       <Dialog open={!!deleteTarget} onOpenChange={(o) => { if (!o && !deleting) setDeleteTarget(null); }}>
         <DialogContent showCloseButton={false}>
           <DialogHeader>
@@ -415,12 +441,12 @@ export default function RequestTypesPage() {
 
       {effectsFor && (
         <RequestEffectsDialog
-          requestTypeId={effectsFor.def.id}
-          requestTypeName={effectsFor.item.nameAr || effectsFor.item.nameEn}
-          requestTypeCode={effectsFor.def.code}
+          requestTypeId={effectsFor.id}
+          requestTypeName={effectsFor.nameAr || effectsFor.nameEn}
+          requestTypeCode={effectsFor.code}
           canEdit={canWfEdit}
           onClose={() => setEffectsFor(null)}
-          onChanged={reloadDefs}
+          onChanged={reload}
         />
       )}
     </div>

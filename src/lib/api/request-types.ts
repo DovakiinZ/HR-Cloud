@@ -159,12 +159,49 @@ export interface AssignableAsset {
 
 const BASE = "/api/platform/request-types";
 
-// ── Request type defs (matched to the master-data list by code) ─────────────────────
+export interface CreateRequestTypeInput {
+  code: string;
+  nameAr: string;
+  nameEn: string;
+  descriptionAr?: string | null;
+  descriptionEn?: string | null;
+  categoryId?: string | null;
+  formDefinitionId: string;               // required — a request type must have a form
+  workflowDefinitionId?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+}
+
+/** Narrower than create: Code and FormDefinitionId are immutable (identity + provisioning key). */
+export interface UpdateRequestTypeInput {
+  nameAr: string;
+  nameEn: string;
+  descriptionAr?: string | null;
+  descriptionEn?: string | null;
+  categoryId?: string | null;
+  workflowDefinitionId?: string | null;
+  printTemplateId?: string | null;
+  icon?: string | null;
+  color?: string | null;
+  sortOrder?: number;
+}
+
+// ── Request type defs (the authoritative engine entities employees submit) ───────────
 
 export const listRequestTypeDefs = (includeInactive = true) =>
   apiFetch<RequestTypeListItem[]>(`${BASE}?includeInactive=${includeInactive}`);
 
 export const getRequestTypeDef = (id: string) => apiFetch<RequestTypeDetail>(`${BASE}/${id}`);
+
+export const createRequestTypeDef = (input: CreateRequestTypeInput) =>
+  apiFetch<RequestTypeDetail>(BASE, { method: "POST", body: input });
+
+export const updateRequestTypeDef = (id: string, input: UpdateRequestTypeInput) =>
+  apiFetch<RequestTypeDetail>(`${BASE}/${id}`, { method: "PUT", body: input });
+
+export const deleteRequestTypeDef = (id: string) =>
+  apiFetch<void>(`${BASE}/${id}`, { method: "DELETE" });
 
 export const duplicateRequestTypeDef = (id: string, input: { code?: string; nameAr: string; nameEn: string }) =>
   apiFetch<RequestTypeDetail>(`${BASE}/${id}/duplicate`, { method: "POST", body: input });
