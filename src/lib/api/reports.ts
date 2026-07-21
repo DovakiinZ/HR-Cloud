@@ -708,3 +708,26 @@ export const seedSystemReports = () =>
  */
 export const seedReportableObjects = () =>
   apiFetch<number>("/api/platform/objects/seed-reportable", { method: "POST" });
+
+/** Outcome of one built-in report during a seed-defaults pass. */
+export interface ReportSeedOutcome {
+  code: string;
+  nameAr: string;
+  status: "Created" | "AlreadyPresent" | "Unsupported" | number;
+  id?: string | null;
+  reason?: string | null;
+}
+
+/** Codes of the curated built-in reports provisioned by seed-defaults. */
+export const BUILTIN_REPORT_CODES = [
+  "attendance-daily", "attendance-summary", "attendance-late", "attendance-absence",
+  "leave-balance", "payroll-register", "employee-directory",
+] as const;
+
+/**
+ * Provision the curated built-in reports (daily attendance, late, absence, attendance summary,
+ * leave balance, payroll register, employee directory). Object-driven + idempotent — existing
+ * reports are never modified. Preferred over seedSystemReports (the older per-subject SYS_* set).
+ */
+export const seedReportDefaults = () =>
+  apiFetch<ReportSeedOutcome[]>("/api/platform/reports/seed-defaults", { method: "POST" });

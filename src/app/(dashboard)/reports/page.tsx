@@ -8,13 +8,18 @@ import { usePermission } from "@/lib/permissions";
 import {
   getReports, exportReport, getReportFolders, getReportTags, getReportShares,
   toggleReportFavorite, toggleReportPin, setReportFolder, assignReportTag, unassignReportTag,
-  seedSystemReports, seedReportableObjects,
+  seedReportDefaults, BUILTIN_REPORT_CODES,
   ReportDefinition, ExportFormat, ReportFolder, ReportTag, ReportShare, ReportScope,
 } from "@/lib/api/reports";
 import { ReportsSidebar } from "@/components/reports/reports-sidebar";
 import { ReportShareDialog } from "@/components/reports/share-dialog";
 
 type View = "" | "favorites" | "recent" | "pinned";
+
+// A report is "built-in / standard" if it's a curated default or a legacy SYS_* per-subject report.
+const BUILTIN_SET = new Set<string>(BUILTIN_REPORT_CODES);
+const isStandardReport = (code?: string | null) =>
+  !!code && (BUILTIN_SET.has(code) || code.startsWith("SYS_"));
 
 const PAGE_SIZE = 25;
 
@@ -100,7 +105,7 @@ export default function ReportsPage() {
   // the set is one report per registry subject, so it stays small.
   const fetchStandard = useCallback(() => {
     getReports({ pageSize: 100 })
-      .then((res) => setStandard((res.items ?? []).filter((r) => (r.code ?? "").startsWith("SYS_"))))
+      .then((res) => setStandard((res.items ?? []).filter((r) => isStandardReport(r.code))))
       .catch(() => {});
   }, []);
 
@@ -137,11 +142,11 @@ export default function ReportsPage() {
   const seedStandard = async () => {
     setSeeding(true);
     try {
-      // Ensure the reportable objects (incl. the master-data table) are registered first, so leave
-      // types / nationalities / request types resolve to real names — then (re)generate the reports.
-      await seedReportableObjects().catch(() => {});
-      const res = await seedSystemReports();
-      toast.success(res.created > 0 ? `تم تجهيز ${res.created} تقرير أساسي` : "لا توجد مواضيع متاحة");
+      // Provision the curated built-in reports (object-driven + idempotent). Reference columns
+      // (employee, leave type, department…) resolve to real names via the engine's display joins.
+      const outcomes = await seedReportDefaults();
+      const created = outcomes.filter((o) => o.status === "Created" || o.status === 1).length;
+      toast.success(created > 0 ? `تم تجهيز ${created} تقرير أساسي` : "التقارير الأساسية جاهزة");
       await fetchReports();
       fetchStandard();   // the shortcut cards are a separate fetch — refresh them too
     } catch { toast.error("تعذر إنشاء التقارير الأساسية"); }
