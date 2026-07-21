@@ -158,6 +158,22 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
         },
         new()
         {
+            EffectType = EffectTypes.EmployeeUpdateField,
+            LabelAr = "تحديث بيانات الموظف", LabelEn = "Update employee field",
+            DescriptionAr = "يحدّث حقلاً معتمداً في ملف الموظف (الهاتف، العنوان، المدينة، جهة اتصال الطوارئ) مع حفظ القيمة السابقة. لا يمكنه تعديل الراتب أو الحساب البنكي أو الحالة.",
+            DescriptionEn = "Updates a whitelisted employee profile field (phone, address, city, emergency contact), keeping the previous value. Cannot touch salary, bank or status.",
+            Module = "Employees",
+            SupportedTriggers = FinalOnly,
+            ExecutionMode = EffectExecutionMode.Transactional,
+            Inputs = new[]
+            {
+                In("fieldKey", "الحقل المطلوب تحديثه", "Field to update", true, FieldContextOrConstant),
+                In("newValue", "القيمة الجديدة", "New value", true, FieldContextOrConstant),
+            },
+            RequiredPermissions = new[] { "Employees.Edit" },
+        },
+        new()
+        {
             EffectType = EffectTypes.NotificationSend,
             LabelAr = "إرسال إشعار", LabelEn = "Send notification",
             DescriptionAr = "يرسل إشعارًا بالبريد. يُنفَّذ لاحقًا، ولا يؤثر فشله على الطلب.",

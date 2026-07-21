@@ -21,6 +21,10 @@ public static class EffectTypes
     // Assets
     public const string AssetsAssignCustody = "Assets.AssignCustody";
 
+    // Employees. Updates a whitelisted self-service profile field (contact/address/emergency)
+    // with an audited before/after — never an arbitrary column.
+    public const string EmployeeUpdateField = "Employee.UpdateField";
+
     // Cross-cutting. Notification.Send is asynchronous: its executor only enqueues, so a mail
     // transport being down can never roll back an approved leave.
     public const string NotificationSend = "Notification.Send";
