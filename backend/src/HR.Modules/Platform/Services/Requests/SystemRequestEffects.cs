@@ -27,12 +27,18 @@ public static class SystemRequestEffects
     private static EffectValueMapping Ctx(string key) => new() { Source = EffectValueSource.RequestContext, Key = key };
     private static EffectValueMapping Field(string key) => new() { Source = EffectValueSource.FormField, Key = key };
     private static EffectValueMapping Const(string value) => new() { Source = EffectValueSource.Constant, Key = value };
+    private static EffectValueMapping Me() => new() { Source = EffectValueSource.CurrentUser, Key = CurrentUserKeys.UserId };
 
     private static Dictionary<string, EffectValueMapping> Map(params (string Key, EffectValueMapping Mapping)[] pairs)
         => pairs.ToDictionary(p => p.Key, p => p.Mapping, StringComparer.OrdinalIgnoreCase);
 
     private static RequiredEffectSpec Transactional(string effectType, Dictionary<string, EffectValueMapping> inputs)
         => new(effectType, EffectTrigger.FinalApproval, EffectExecutionMode.Transactional, inputs);
+
+    /// <summary>An out-of-band effect (e.g. a notification): it only enqueues inside the completion
+    /// transaction, so a mail transport being down can never roll back the approval.</summary>
+    private static RequiredEffectSpec Async(string effectType, Dictionary<string, EffectValueMapping> inputs)
+        => new(effectType, EffectTrigger.FinalApproval, EffectExecutionMode.Asynchronous, inputs);
 
     public static readonly IReadOnlyDictionary<string, IReadOnlyList<RequiredEffectSpec>> Required =
         new Dictionary<string, IReadOnlyList<RequiredEffectSpec>>(StringComparer.OrdinalIgnoreCase)
@@ -114,6 +120,42 @@ public static class SystemRequestEffects
                     ("employeeId", Ctx(RequestContextKeys.EmployeeId)),
                     ("expectedReturnDate", Field("expectedReturnDate")),
                     ("notes", Field("notes")))),
+            },
+
+            // ── Lifecycle requests: the load-bearing effect is a follow-up TASK that drives the
+            // human process (offboarding, investigation, clearance) plus a notification to the
+            // requester. All bind to constants + the request's own employee/actor, so they never
+            // depend on a form field and always validate. The domain status changes those requests
+            // ultimately need (terminate on last-working-day, settlement, etc.) are date-effective
+            // and land in a later phase; these give the requests real, immediate effects today.
+            ["RESIGNATION"] = new[]
+            {
+                Transactional(EffectTypes.TaskCreate, Map(
+                    ("title", Const("متابعة إجراءات إخلاء الطرف والتسليم")),
+                    ("description", Const("طلب استقالة معتمد — ابدأ إجراءات إخلاء الطرف وتسليم العهد والمخالصة.")),
+                    ("assigneeUserId", Me()))),
+                Async(EffectTypes.NotificationSend, Map(
+                    ("subject", Const("تم اعتماد طلب الاستقالة")),
+                    ("body", Const("تم اعتماد طلب استقالتك. ستبدأ إجراءات إخلاء الطرف والتسوية النهائية.")))),
+            },
+
+            ["CLEARANCE"] = new[]
+            {
+                Transactional(EffectTypes.TaskCreate, Map(
+                    ("title", Const("إجراءات إخلاء الطرف")),
+                    ("description", Const("طلب إخلاء طرف معتمد — استكمل تسليم العهد والمخالصة النهائية.")),
+                    ("assigneeUserId", Me()))),
+            },
+
+            ["COMPLAINT"] = new[]
+            {
+                Transactional(EffectTypes.TaskCreate, Map(
+                    ("title", Const("مراجعة/معالجة الشكوى")),
+                    ("description", Const("شكوى معتمدة للمراجعة — ابدأ إجراءات المعالجة والتوثيق.")),
+                    ("assigneeUserId", Me()))),
+                Async(EffectTypes.NotificationSend, Map(
+                    ("subject", Const("تم استلام شكواك")),
+                    ("body", Const("تم استلام شكواك وستتم مراجعتها. سنبقيك على اطلاع بالمستجدات.")))),
             },
 
             // BUSINESS_TRIP and SALARY_CERTIFICATE are approval-and-document requests: they produce
