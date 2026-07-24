@@ -32,6 +32,7 @@ public class FormFieldConfiguration : IEntityTypeConfiguration<FormField>
         builder.Property(x => x.SectionName).HasMaxLength(200);
         builder.Property(x => x.ValidationRules).HasColumnType("jsonb");
         builder.Property(x => x.Options).HasColumnType("jsonb");
+        builder.Property(x => x.MetadataJson).HasColumnType("jsonb");
         builder.HasMany(x => x.SubmissionValues).WithOne(x => x.FormField).HasForeignKey(x => x.FormFieldId).OnDelete(DeleteBehavior.Restrict);
     }
 }

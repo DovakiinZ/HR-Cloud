@@ -17,6 +17,8 @@ public class FormField : BaseEntity
     public string? DefaultValue { get; set; }
     public string? ValidationRules { get; set; } // JSONB
     public string? Options { get; set; } // JSONB
+    /// <summary>Governance metadata (JSONB): {"classification":"SystemRequired|BusinessRequired|Optional|Custom","isLocked":bool}. Null = Optional.</summary>
+    public string? MetadataJson { get; set; }
 
     public FormDefinition FormDefinition { get; set; } = null!;
     public ICollection<FormSubmissionValue> SubmissionValues { get; set; } = new List<FormSubmissionValue>();
