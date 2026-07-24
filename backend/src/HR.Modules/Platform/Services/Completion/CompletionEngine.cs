@@ -73,17 +73,36 @@ public sealed class CompletionEngine : ICompletionEngine
             Attempts = 1,
             FinalApproverUserId = _user.IsAuthenticated ? _user.UserId : null,
         };
+        var deferredSequences = new HashSet<int>();
         foreach (var intent in intents.OrderBy(i => i.Sequence))
+        {
+            var deferred = intent.Mode == EffectExecutionMode.Deferred;
+            if (deferred) deferredSequences.Add(intent.Sequence);
             run.Effects.Add(new CompletionEffect
             {
                 RequestInstanceId = requestInstanceId,
                 EffectType = intent.EffectType,
                 Sequence = intent.Sequence,
                 Payload = intent.Payload,
-                Status = CompletionEffectStatus.Pending,
+                MaxAttempts = deferred ? Math.Max(1, intent.MaxAttempts) : 1,
+                ScheduledFor = deferred ? intent.ScheduledFor : null,
+                Status = deferred
+                    ? (intent.ScheduledFor is { } when && when > DateTime.UtcNow
+                        ? CompletionEffectStatus.Scheduled
+                        : CompletionEffectStatus.Pending)
+                    : CompletionEffectStatus.Pending,
             });
+        }
         _db.CompletionRuns.Add(run);
         await _db.SaveChangesAsync(ct);
+
+        // Deferred effects get their Id as idempotency key now that they are persisted.
+        if (deferredSequences.Count > 0)
+        {
+            foreach (var e in run.Effects.Where(e => deferredSequences.Contains(e.Sequence)))
+                e.IdempotencyKey = e.Id.ToString();
+            await _db.SaveChangesAsync(ct);
+        }
 
         // No effects to run → completed trivially.
         if (run.Effects.Count == 0)
@@ -95,9 +114,12 @@ public sealed class CompletionEngine : ICompletionEngine
             return CompletionResult.Ok(run.Id, 0);
         }
 
-        // ── Phase B: execute all effects atomically.
+        // ── Phase B: execute only inline (non-deferred) effects atomically.
         var overall = Stopwatch.StartNew();
-        var ordered = run.Effects.OrderBy(e => e.Sequence).ToList();
+        var ordered = run.Effects
+            .Where(e => !deferredSequences.Contains(e.Sequence))
+            .OrderBy(e => e.Sequence).ToList();
+        var deferredEffects = run.Effects.Where(e => deferredSequences.Contains(e.Sequence)).ToList();
         CompletionEffect? failed = null;
         string? error = null;
 
@@ -159,8 +181,10 @@ public sealed class CompletionEngine : ICompletionEngine
             }
 
             overall.Stop();
-            run.Status = CompletionRunStatus.Completed;
-            run.CompletedAt = DateTime.UtcNow;
+            run.Status = deferredEffects.Count > 0
+                ? CompletionRunStatus.AwaitingDeferred
+                : CompletionRunStatus.Completed;
+            run.CompletedAt = deferredEffects.Count > 0 ? null : DateTime.UtcNow;
             run.DurationMs = (int)overall.ElapsedMilliseconds;
 
             if (ctxBase.AffectsTimeline)
