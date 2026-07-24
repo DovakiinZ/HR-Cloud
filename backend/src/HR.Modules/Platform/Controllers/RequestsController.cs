@@ -4,6 +4,7 @@ using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
+using HR.Modules.Platform.Services.Completion;
 using HR.Modules.Platform.Services.Requests;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,10 +26,12 @@ public class RequestsController : BaseApiController
     private readonly ApplicationDbContext _db;
     private readonly ICurrentUserService _user;
     private readonly ILeaveService _leave;
+    private readonly IScheduledEffectRecoveryService _recovery;
 
-    public RequestsController(IRequestEngine engine, ApplicationDbContext db, ICurrentUserService user, ILeaveService leave)
+    public RequestsController(IRequestEngine engine, ApplicationDbContext db, ICurrentUserService user,
+        ILeaveService leave, IScheduledEffectRecoveryService recovery)
     {
-        _engine = engine; _db = db; _user = user; _leave = leave;
+        _engine = engine; _db = db; _user = user; _leave = leave; _recovery = recovery;
     }
 
     // ── Leave (generic sub-typed request) ───────────────────────────────────────
@@ -441,6 +444,43 @@ public class RequestsController : BaseApiController
         return OkResponse(run);
     }
 
+    // ── Failed-effect recovery ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// List all deferred effects that need operator attention (status ManualReview or Failed).
+    /// Operators can then retry or skip each one.
+    /// </summary>
+    [HttpGet("effects/attention")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Edit")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<AttentionEffectDto>>>> EffectsNeedingAttention(CancellationToken ct)
+        => OkResponse(await _recovery.ListAttentionAsync(ct));
+
+    /// <summary>
+    /// Reset a ManualReview / Failed deferred effect to Pending so the drainer retries it.
+    /// Returns 400 if the effect is already in a terminal state (e.g. Completed).
+    /// </summary>
+    [HttpPost("effects/{effectId:guid}/retry")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Edit")]
+    public async Task<ActionResult<ApiResponse<bool>>> RetryEffect(Guid effectId, CancellationToken ct)
+    {
+        var ok = await _recovery.RetryAsync(effectId, ct);
+        if (!ok) return BadRequest(ApiResponse.Fail("Effect is not in a recoverable state"));
+        return OkResponse(true, "Effect requeued for retry");
+    }
+
+    /// <summary>
+    /// Mark a ManualReview / Failed deferred effect as Skipped with a human-supplied reason.
+    /// Returns 400 if the effect is not in a recoverable state.
+    /// </summary>
+    [HttpPost("effects/{effectId:guid}/skip")]
+    [HR.Api.Filters.RequirePermission("Platform.MasterData.Edit")]
+    public async Task<ActionResult<ApiResponse<bool>>> SkipEffect(Guid effectId, [FromBody] SkipEffectRequest body, CancellationToken ct)
+    {
+        var ok = await _recovery.SkipAsync(effectId, body?.Reason ?? "ManuallySkipped", ct);
+        if (!ok) return BadRequest(ApiResponse.Fail("Effect is not in a recoverable state"));
+        return OkResponse(true, "Effect marked as skipped");
+    }
+
     /// <summary>Download the official PDF for a request (logo, CR/VAT, details, approvals, QR).</summary>
     [HttpGet("{id:guid}/document")]
     public async Task<IActionResult> Document(Guid id, CancellationToken ct)
@@ -617,6 +657,7 @@ public sealed class RequestTypeAdminDto
 
 public sealed class SetWorkflowBody { public Guid? WorkflowDefinitionId { get; set; } }
 public sealed class SetActiveBody { public bool IsActive { get; set; } }
+public sealed class SkipEffectRequest { public string? Reason { get; set; } }
 
 public sealed class RequestTypeDto
 {

@@ -110,6 +110,8 @@ public static class DependencyInjection
         services.AddScoped<ICompletionEffectFactory, HR.Modules.Platform.Services.Completion.CompletionEffectFactory>();
         services.AddScoped<HR.Application.Engines.Completion.IScheduledEffectDrainer,
             HR.Modules.Platform.Services.Completion.ScheduledEffectDrainer>();
+        services.AddScoped<HR.Modules.Platform.Services.Completion.IScheduledEffectRecoveryService,
+            HR.Modules.Platform.Services.Completion.ScheduledEffectRecoveryService>();
         services.AddEffectExecutorsFromAssembly(Assembly.GetExecutingAssembly());
 
         // Request Center engine + system-request seeder
