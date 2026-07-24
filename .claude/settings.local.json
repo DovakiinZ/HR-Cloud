@@ -97,7 +97,20 @@
       "Bash(cmd *)",
       "Bash(az webapp *)",
       "Bash(Select-Object -First 40)",
-      "Bash(grep -iv \"//\")"
+      "Bash(grep -iv \"//\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(az postgres *)",
+      "Bash(az keyvault *)",
+      "Bash(echo \"PUBLISH_DONE exit=$?\")",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(echo \"delete exit=$?\")",
+      "Bash(echo \"TS errors: $\\(npx tsc --noEmit 2>&1)",
+      "Bash(echo \"origin=$?\")",
+      "Bash(echo \"sanad=$?\")",
+      "Bash(echo \"remotes: o=$\\(git ls-remote origin -h refs/heads/main)",
+      "Bash(grep -E \"\\\\.\\(cs|csproj\\)$\")",
+      "Read(//c/Users/yaman/.claude/plugins/**)",
+      "Read(//c/Users/yaman/.claude/**)"
     ]
   }
 }

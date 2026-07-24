@@ -24,6 +24,10 @@ public enum EffectExecutionMode
 {
     Transactional = 1,
     Asynchronous = 2,
+
+    /// <summary>Not run at approval. Enqueued as a durable completion effect and executed later by the
+    /// scheduled-effect worker — on its effective date, with idempotency, retry and operator recovery.</summary>
+    Deferred = 3,
 }
 
 /// <summary>Where an effect input's value comes from. Deliberately closed: the frontend chooses a

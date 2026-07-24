@@ -31,6 +31,7 @@ public class RequestEffectDefinitionConfiguration : IEntityTypeConfiguration<Req
         builder.HasKey(x => x.Id);
         builder.Property(x => x.EffectType).HasMaxLength(200).IsRequired();
         builder.Property(x => x.ConfigurationJson).HasColumnType("jsonb").IsRequired();
+        builder.Property(x => x.MaxAttempts).HasDefaultValue(1);
         // The factory orders by (Sequence, Id) and filters on (RequestTypeId, Trigger, IsEnabled);
         // this index matches that access path exactly.
         builder.HasIndex(x => new { x.RequestTypeId, x.Trigger, x.Sequence });

@@ -137,6 +137,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     // Completion Effects Engine
     public DbSet<HR.Domain.Engines.Completion.CompletionRun> CompletionRuns => Set<HR.Domain.Engines.Completion.CompletionRun>();
     public DbSet<HR.Domain.Engines.Completion.CompletionEffect> CompletionEffects => Set<HR.Domain.Engines.Completion.CompletionEffect>();
+    public DbSet<HR.Domain.Engines.Completion.EffectAttempt> EffectAttempts => Set<HR.Domain.Engines.Completion.EffectAttempt>();
 
     // Token Engine
     public DbSet<TokenDefinition> TokenDefinitions => Set<TokenDefinition>();

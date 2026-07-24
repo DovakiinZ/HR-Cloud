@@ -22,6 +22,20 @@ public class CompletionEffect : TenantEntity
     public CompletionEffectStatus Status { get; set; } = CompletionEffectStatus.Pending;
     public int Attempts { get; set; }
 
+    // ── Phase 2: durable deferred execution ──────────────────────────────────────
+    /// <summary>Effective date for a deferred effect. Null = run as soon as the worker sees it.</summary>
+    public DateTime? ScheduledFor { get; set; }
+    /// <summary>Retry gate: the worker will not attempt this effect before this time.</summary>
+    public DateTime? NextAttemptAt { get; set; }
+    /// <summary>Total attempts allowed before ManualReview. 1 = no retry (default, inline behavior).</summary>
+    public int MaxAttempts { get; set; } = 1;
+    /// <summary>Effectively-once backstop; set to the effect's Id for deferred effects.</summary>
+    public string? IdempotencyKey { get; set; }
+    /// <summary>Worker lease expiry; a row leased past this time may be reclaimed.</summary>
+    public DateTime? LeasedUntil { get; set; }
+    /// <summary>Identifier of the worker that currently holds the lease.</summary>
+    public string? LeasedBy { get; set; }
+
     public DateTime? ExecutedAt { get; set; }
     public int? DurationMs { get; set; }
 

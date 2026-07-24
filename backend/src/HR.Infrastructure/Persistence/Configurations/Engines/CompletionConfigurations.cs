@@ -39,5 +39,29 @@ public class CompletionEffectConfiguration : IEntityTypeConfiguration<Completion
         builder.HasIndex(x => x.CompletionRunId);
         builder.HasIndex(x => x.TenantId);
         builder.HasIndex(x => x.Status);
+
+        builder.Property(x => x.IdempotencyKey).HasMaxLength(200);
+        builder.Property(x => x.LeasedBy).HasMaxLength(100);
+        builder.Property(x => x.MaxAttempts).HasDefaultValue(1);
+        builder.HasIndex(x => x.IdempotencyKey).IsUnique();
+        // The worker's "due" query filters on these; index keeps polling cheap.
+        builder.HasIndex(x => new { x.Status, x.ScheduledFor, x.NextAttemptAt });
+    }
+}
+
+public class EffectAttemptConfiguration : IEntityTypeConfiguration<EffectAttempt>
+{
+    public void Configure(EntityTypeBuilder<EffectAttempt> builder)
+    {
+        builder.ToTable("engine_effect_attempts");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.FailureReason).HasMaxLength(2000);
+        builder.HasIndex(x => x.CompletionEffectId);
+        builder.HasIndex(x => x.TenantId);
+
+        builder.HasOne(x => x.Effect)
+            .WithMany()
+            .HasForeignKey(x => x.CompletionEffectId)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

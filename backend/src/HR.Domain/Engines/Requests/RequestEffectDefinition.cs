@@ -47,6 +47,9 @@ public class RequestEffectDefinition : TenantEntity
 
     public EffectExecutionMode ExecutionMode { get; set; } = EffectExecutionMode.Transactional;
 
+    /// <summary>Retries allowed when this effect runs deferred. 1 = no retry. Ignored for inline modes.</summary>
+    public int MaxAttempts { get; set; } = 1;
+
     /// <summary>
     /// The input mapping, as a JSON object of inputKey → {source, key}. Validated against the
     /// descriptor's schema and the linked form on activation; see EffectConfiguration.
