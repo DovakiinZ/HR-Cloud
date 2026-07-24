@@ -75,10 +75,13 @@ public static class RequestContextKeys
     public const string StartDate = "startDate";
     public const string EndDate = "endDate";
     public const string DaysCount = "daysCount";
+    public const string ManagerUserId = "managerUserId";
+    public const string ManagerEmail = "managerEmail";
 
     public static readonly IReadOnlySet<string> All = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
         EmployeeId, RequestId, RequestNumber, RequestTypeCode, LeaveTypeId, StartDate, EndDate, DaysCount,
+        ManagerUserId, ManagerEmail,
     };
 }
 

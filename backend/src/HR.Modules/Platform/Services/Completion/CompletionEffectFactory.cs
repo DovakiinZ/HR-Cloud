@@ -173,6 +173,23 @@ public sealed class CompletionEffectFactory : ICompletionEffectFactory
         var intents = new List<EffectIntent>();
         if (definitions.Count == 0) return intents;
 
+        // Resolve the requester's manager for notification targeting.
+        Guid? managerUserId = null;
+        string? managerEmail = null;
+        var managerId = await _db.Employees
+            .Where(e => e.Id == instance.EmployeeId)
+            .Select(e => e.ManagerId)
+            .FirstOrDefaultAsync(ct);
+        if (managerId is { } mid)
+        {
+            var mgr = await _db.Employees
+                .Where(e => e.Id == mid)
+                .Select(e => new { e.UserId, e.Email })
+                .FirstOrDefaultAsync(ct);
+            managerUserId = mgr?.UserId;
+            managerEmail = mgr?.Email;
+        }
+
         var ctx = new EffectResolutionContext
         {
             Instance = instance,
@@ -180,6 +197,8 @@ public sealed class CompletionEffectFactory : ICompletionEffectFactory
             TenantId = instance.TenantId,
             ActorUserId = _user.UserId,
             FormValues = await LoadFormValuesAsync(instance.FormSubmissionId, ct),
+            ManagerUserId = managerUserId,
+            ManagerEmail = managerEmail,
         };
 
         var seq = 0;

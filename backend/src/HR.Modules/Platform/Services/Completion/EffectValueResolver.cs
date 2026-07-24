@@ -14,6 +14,12 @@ public sealed class EffectResolutionContext
 
     /// <summary>fieldCode → (value, fileUrl) from the submitted form.</summary>
     public required IReadOnlyDictionary<string, (string? Value, string? FileUrl)> FormValues { get; init; }
+
+    /// <summary>The requester's manager's application UserId, or null when no manager is set.</summary>
+    public Guid? ManagerUserId { get; init; }
+
+    /// <summary>The requester's manager's email, or null when no manager is set.</summary>
+    public string? ManagerEmail { get; init; }
 }
 
 /// <summary>
@@ -54,6 +60,8 @@ public static class EffectValueResolver
             "startdate" => ctx.Instance.StartDate,
             "enddate" => ctx.Instance.EndDate,
             "dayscount" => ctx.Instance.DaysCount,
+            "manageruserid" => ctx.ManagerUserId,
+            "manageremail" => ctx.ManagerEmail,
             _ => null,
         },
 
