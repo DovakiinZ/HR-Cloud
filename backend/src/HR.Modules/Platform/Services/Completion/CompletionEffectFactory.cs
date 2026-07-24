@@ -189,7 +189,20 @@ public sealed class CompletionEffectFactory : ICompletionEffectFactory
             if (config is null) continue;   // malformed configuration: nothing safe to run
 
             var payload = EffectValueResolver.Resolve(config, ctx);
-            intents.Add(new EffectIntent(def.EffectType, ++seq, Serialize(payload)));
+
+            DateTime? scheduledFor = null;
+            if (def.ExecutionMode == EffectExecutionMode.Deferred
+                && payload.TryGetValue("__effectiveOn", out var eff)
+                && DateTime.TryParse(eff?.ToString(), System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.AdjustToUniversal | System.Globalization.DateTimeStyles.AssumeUniversal,
+                    out var d))
+            {
+                scheduledFor = DateTime.SpecifyKind(d, DateTimeKind.Utc);
+            }
+
+            intents.Add(new EffectIntent(
+                def.EffectType, ++seq, Serialize(payload),
+                def.ExecutionMode, scheduledFor, def.MaxAttempts));
         }
 
         return intents;

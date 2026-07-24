@@ -1,3 +1,5 @@
+using HR.Domain.Enums;
+
 namespace HR.Application.Engines.Completion;
 
 /// <summary>
@@ -8,4 +10,13 @@ namespace HR.Application.Engines.Completion;
 /// <param name="EffectType">e.g. "Leave.CreateApprovedLeave".</param>
 /// <param name="Sequence">1-based execution order within the request.</param>
 /// <param name="Payload">JSON object string describing the effect's inputs.</param>
-public sealed record EffectIntent(string EffectType, int Sequence, string Payload);
+/// <param name="Mode">Execution boundary. Defaults to Transactional so all existing call sites are unaffected.</param>
+/// <param name="ScheduledFor">UTC date/time this deferred effect should run. Null for non-deferred effects.</param>
+/// <param name="MaxAttempts">How many attempts the worker makes before moving to ManualReview. Defaults to 1.</param>
+public sealed record EffectIntent(
+    string EffectType,
+    int Sequence,
+    string Payload,
+    EffectExecutionMode Mode = EffectExecutionMode.Transactional,
+    DateTime? ScheduledFor = null,
+    int MaxAttempts = 1);

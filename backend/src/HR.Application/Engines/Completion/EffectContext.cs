@@ -17,6 +17,10 @@ public sealed class EffectContext
     public required Guid EmployeeId { get; init; }
     public Guid? ActorUserId { get; init; }
 
+    /// <summary>Stable per-effect key for deferred execution; executors touching external systems may use
+    /// it to dedupe. Null for inline effects.</summary>
+    public string? IdempotencyKey { get; init; }
+
     /// <summary>The effect's structured intent payload (JSONB).</summary>
     public required JsonElement Payload { get; init; }
 
