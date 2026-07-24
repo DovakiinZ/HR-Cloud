@@ -1,5 +1,8 @@
+using System.Text.Json;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Completion;
+using HR.Application.Engines.Forms;
+using HR.Domain.Engines.Forms;
 using HR.Domain.Engines.Requests;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
@@ -33,8 +36,10 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     ///
     /// v2: resignation/clearance/complaint gained load-bearing Task.Create (+ requester
     /// notification) effects, so existing tenants reconcile them on the next provision.
+    /// v3: stamp form-field classification (SystemRequired / Optional) on first provision;
+    /// backfill existing tenants' fields where classification is absent.
     /// </summary>
-    public const int CurrentSeedVersion = 2;
+    public const int CurrentSeedVersion = 3;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
@@ -88,6 +93,7 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             }
 
             changes.AddRange(ReconcileRequiredEffects(type));
+            changes.AddRange(await BackfillFieldClassificationsAsync(type, ct));
             type.SeedVersion = CurrentSeedVersion;
 
             // from == 0 means the row had never been stamped: either just created above, or created
@@ -169,5 +175,72 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
         }
 
         return changes;
+    }
+
+    /// <summary>
+    /// Stamps every FormField on this request type's form with a classification, additively.
+    ///
+    /// A field whose MetadataJson already contains a "classification" property is left completely
+    /// alone — the tenant may have set it to Custom (or explicitly to Optional / SystemRequired) and
+    /// that choice survives any number of provisioning passes.
+    ///
+    /// Classification rule: a field is SystemRequired iff its Code is referenced by at least one
+    /// required-effect input whose Source is FormField for this request type; otherwise Optional.
+    /// </summary>
+    private async Task<List<string>> BackfillFieldClassificationsAsync(RequestType type, CancellationToken ct)
+    {
+        var changes = new List<string>();
+        var formId = type.FormDefinitionId;
+        if (formId == Guid.Empty) return changes;
+
+        var fields = await _db.Set<FormField>()
+            .Where(f => f.FormDefinitionId == formId)
+            .ToListAsync(ct);
+        if (fields.Count == 0) return changes;
+
+        // Collect all FormField keys referenced by this type's required effect inputs.
+        var systemCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (SystemRequestEffects.Required.TryGetValue(type.Code, out var specs))
+        {
+            foreach (var spec in specs)
+                foreach (var (_, mapping) in spec.Inputs)
+                    if (mapping.Source == EffectValueSource.FormField && mapping.Key is { Length: > 0 } k)
+                        systemCodes.Add(k);
+        }
+
+        foreach (var field in fields)
+        {
+            // Never overwrite an existing explicit classification (even if it is Optional).
+            if (HasClassification(field.MetadataJson)) continue;
+
+            var target = systemCodes.Contains(field.Code)
+                ? FieldClassification.SystemRequired
+                : FieldClassification.Optional;
+            field.MetadataJson = FormFieldClassification.With(target);
+            changes.Add($"classified {field.Code} as {target}");
+        }
+
+        return changes;
+    }
+
+    /// <summary>
+    /// Returns true iff the JSON has an explicit "classification" property — even if its value is
+    /// "Optional". This is deliberately different from <see cref="FormFieldClassification.Of"/>,
+    /// which defaults absent/invalid JSON to Optional; using Of() as a guard would incorrectly treat
+    /// unclassified fields as already classified and skip them.
+    /// </summary>
+    private static bool HasClassification(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return doc.RootElement.ValueKind == JsonValueKind.Object
+                   && doc.RootElement.TryGetProperty("classification", out _);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
     }
 }
