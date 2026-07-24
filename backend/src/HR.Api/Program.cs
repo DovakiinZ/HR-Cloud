@@ -83,6 +83,7 @@ builder.Services.AddPlatformModule();
 builder.Services.AddHostedService<HR.Api.Services.DocumentExpiryHostedService>();
 builder.Services.AddHostedService<HR.Api.Services.ReportScheduleHostedService>();
 builder.Services.AddHostedService<HR.Api.Services.EmailDeliveryHostedService>();
+builder.Services.AddHostedService<HR.Api.Services.ScheduledEffectHostedService>();
 
 // Optional durable background execution for large payroll runs. Off by default — the in-process
 // scheduler (registered in AddInfrastructure) handles execution inline unless this is enabled.
