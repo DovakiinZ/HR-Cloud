@@ -22,8 +22,9 @@ public sealed class ScheduledEffectRecoveryService : IScheduledEffectRecoverySer
 
     public async Task<IReadOnlyList<AttentionEffectDto>> ListAttentionAsync(CancellationToken ct) =>
         await _db.CompletionEffects
-            .Where(e => e.Status == CompletionEffectStatus.ManualReview
-                     || e.Status == CompletionEffectStatus.Failed)
+            .Where(e => e.IdempotencyKey != null
+                     && (e.Status == CompletionEffectStatus.ManualReview
+                      || e.Status == CompletionEffectStatus.Failed))
             .OrderBy(e => e.ExecutedAt)
             .Select(e => new AttentionEffectDto(
                 e.Id,
@@ -39,6 +40,7 @@ public sealed class ScheduledEffectRecoveryService : IScheduledEffectRecoverySer
     {
         var effect = await _db.CompletionEffects.FirstOrDefaultAsync(e => e.Id == effectId, ct);
         if (effect is null
+            || effect.IdempotencyKey is null
             || effect.Status is not (CompletionEffectStatus.ManualReview or CompletionEffectStatus.Failed))
             return false;
 
@@ -67,6 +69,7 @@ public sealed class ScheduledEffectRecoveryService : IScheduledEffectRecoverySer
     {
         var effect = await _db.CompletionEffects.FirstOrDefaultAsync(e => e.Id == effectId, ct);
         if (effect is null
+            || effect.IdempotencyKey is null
             || effect.Status is not (CompletionEffectStatus.ManualReview or CompletionEffectStatus.Failed))
             return false;
 

@@ -114,7 +114,8 @@ file sealed class RecoveryHarness : IAsyncDisposable
 
     public CompletionEffect AddEffect(CompletionRun run, string effectType,
         CompletionEffectStatus status, int maxAttempts = 3, int attempts = 1,
-        string? failureReason = null, string? leasedBy = null, DateTime? leasedUntil = null)
+        string? failureReason = null, string? leasedBy = null, DateTime? leasedUntil = null,
+        string? idempotencyKey = "use-default")
     {
         var effect = new CompletionEffect
         {
@@ -131,7 +132,7 @@ file sealed class RecoveryHarness : IAsyncDisposable
             FailureReason = failureReason,
             LeasedBy = leasedBy,
             LeasedUntil = leasedUntil,
-            IdempotencyKey = Guid.NewGuid().ToString(),
+            IdempotencyKey = idempotencyKey == "use-default" ? Guid.NewGuid().ToString() : idempotencyKey,
         };
         Db.CompletionEffects.Add(effect);
         return effect;
@@ -257,5 +258,42 @@ public class ScheduledEffectRecoveryServiceTests
 
         h.Timeline.Calls.Should().ContainSingle(c => c.Action == "EffectSkipped" && c.EntityId == instanceId,
             "an EffectSkipped timeline event must be published");
+    }
+
+    /// <summary>
+    /// Fact 5 (negative): An inline Failed effect (IdempotencyKey == null) is NOT returned by
+    /// ListAttentionAsync, and RetryAsync returns false without mutating the effect or publishing
+    /// any timeline event. This guards against the inline-effect re-execution bug identified in
+    /// the final review of Phase 2 Execution Foundation.
+    /// </summary>
+    [Fact]
+    public async Task Inline_failed_effect_is_not_recoverable()
+    {
+        await using var h = await RecoveryHarness.CreateAsync();
+        var (run, _) = await h.SeedRunAsync();
+
+        // Inline Failed effect: IdempotencyKey is null (as CompletionEngine leaves it for inline effects)
+        var inlineEffect = h.AddEffect(run, "Type.InlineFailed", CompletionEffectStatus.Failed,
+            failureReason: "inline execution error", idempotencyKey: null);
+        // Also seed a deferred ManualReview effect to confirm the list still returns deferred ones
+        h.AddEffect(run, "Type.DeferredManual", CompletionEffectStatus.ManualReview);
+        await h.Db.SaveChangesAsync();
+
+        var svc = h.BuildService();
+
+        // (a) ListAttentionAsync must NOT include the inline Failed effect
+        var list = await svc.ListAttentionAsync(CancellationToken.None);
+        list.Should().HaveCount(1, "only the deferred ManualReview effect should appear");
+        list.Should().NotContain(r => r.EffectType == "Type.InlineFailed",
+            "inline Failed effects must be excluded from operator recovery");
+
+        // (b) RetryAsync must return false and leave the effect unchanged
+        var retryResult = await svc.RetryAsync(inlineEffect.Id, CancellationToken.None);
+        retryResult.Should().BeFalse("inline Failed effects must not be retriable via recovery service");
+
+        var row = await h.Db.CompletionEffects.IgnoreQueryFilters()
+            .FirstAsync(e => e.Id == inlineEffect.Id);
+        row.Status.Should().Be(CompletionEffectStatus.Failed, "status must remain Failed — no mutation");
+        h.Timeline.Calls.Should().BeEmpty("no timeline event should be published for a rejected retry");
     }
 }
