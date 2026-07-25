@@ -62,7 +62,8 @@ public class PlatformMappingProfile : Profile
         // Forms
         CreateMap<FormDefinition, FormDefinitionDto>();
         CreateMap<FormField, FormFieldDto>()
-            .ForMember(d => d.FieldType, opt => opt.MapFrom(s => s.FieldType.ToString()));
+            .ForMember(d => d.FieldType, opt => opt.MapFrom(s => s.FieldType.ToString()))
+            .ForMember(d => d.Classification, opt => opt.MapFrom(s => HR.Application.Engines.Forms.FormFieldClassification.Of(s.MetadataJson).ToString()));
         CreateMap<FormSubmission, FormSubmissionDto>()
             .ForMember(d => d.Status, opt => opt.MapFrom(s => s.Status.ToString()));
         CreateMap<FormSubmissionValue, FormSubmissionValueDto>();

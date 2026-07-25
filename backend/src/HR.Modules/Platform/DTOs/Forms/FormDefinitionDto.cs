@@ -28,6 +28,8 @@ public class FormFieldDto
     public string? DefaultValue { get; set; }
     public string? ValidationRules { get; set; }
     public string? Options { get; set; }
+    /// <summary>Read-only classification derived from MetadataJson. One of: SystemRequired, BusinessRequired, Optional, Custom.</summary>
+    public string Classification { get; set; } = "Optional";
 }
 
 public class FormSubmissionDto

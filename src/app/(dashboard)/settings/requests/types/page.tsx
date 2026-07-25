@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, FileSignature, GitBranch, Zap, Copy, Power } from "lucide-react";
+import { ArrowRight, Plus, Pencil, Trash2, Loader2, Lock, FileSignature, GitBranch, Zap, Copy, Power, ListTree } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,6 +20,7 @@ import {
   RequestTypeListItem,
 } from "@/lib/api/request-types";
 import { RequestEffectsDialog } from "@/components/requests/request-effects-dialog";
+import { FormFieldEditor } from "@/components/requests/form-field-editor";
 import { getLookup, lookupLabel, LookupItem } from "@/lib/api/lookups";
 import { getFormDefinitions, formLabel, FormDefinition } from "@/lib/api/forms";
 import { getWorkflowDefinitions, workflowLabel, WorkflowDefinition } from "@/lib/api/workflows";
@@ -69,6 +70,7 @@ export default function RequestTypesPage() {
   const [deleteTarget, setDeleteTarget] = useState<RequestTypeListItem | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [effectsFor, setEffectsFor] = useState<RequestTypeListItem | null>(null);
+  const [fieldsFor, setFieldsFor] = useState<{ id: string; formDefinitionId: string; name: string } | null>(null);
   const [provisioning, setProvisioning] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);   // per-row action key
 
@@ -286,6 +288,23 @@ export default function RequestTypesPage() {
                     <div className="flex items-center gap-1 justify-end">
                       {canWfEdit && <button onClick={() => toggleActive(d)} disabled={busy === `act:${d.id}`} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50" title={d.isActive ? "تعطيل" : "تفعيل"}>{busy === `act:${d.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Power className="h-4 w-4" />}</button>}
                       {canWfEdit && <button onClick={() => openEdit(d)} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground" title="تعديل"><Pencil className="h-4 w-4" /></button>}
+                      {d.hasForm && canWfEdit && (
+                        <button
+                          onClick={async () => {
+                            setBusy(`fld:${d.id}`);
+                            try {
+                              const full = await getRequestTypeDef(d.id);
+                              setFieldsFor({ id: d.id, formDefinitionId: full.formDefinitionId, name: d.nameAr || d.nameEn });
+                            } catch { toast.error("تعذر تحميل النموذج"); }
+                            finally { setBusy(null); }
+                          }}
+                          disabled={busy === `fld:${d.id}`}
+                          className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50"
+                          title="حقول النموذج"
+                        >
+                          {busy === `fld:${d.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <ListTree className="h-4 w-4" />}
+                        </button>
+                      )}
                       {canWfEdit && <button onClick={() => duplicate(d)} disabled={busy === `dup:${d.id}`} className="h-8 w-8 inline-flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-50" title="نسخ وتخصيص">{busy === `dup:${d.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <Copy className="h-4 w-4" />}</button>}
                       {d.canDelete
                         ? (canWfEdit && <button onClick={() => setDeleteTarget(d)} className="h-8 w-8 inline-flex items-center justify-center text-destructive hover:text-destructive/80" title="حذف"><Trash2 className="h-4 w-4" /></button>)
@@ -448,6 +467,28 @@ export default function RequestTypesPage() {
           onClose={() => setEffectsFor(null)}
           onChanged={reload}
         />
+      )}
+
+      {/* Form fields editor dialog */}
+      {fieldsFor && (
+        <Dialog open onOpenChange={(o) => { if (!o) setFieldsFor(null); }}>
+          <DialogContent className="sm:max-w-2xl" dir="rtl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ListTree className="h-4 w-4 text-primary" /> حقول النموذج
+                <span className="text-sm font-normal text-muted-foreground">— {fieldsFor.name}</span>
+              </DialogTitle>
+            </DialogHeader>
+            <div className="py-1">
+              <FormFieldEditor
+                formId={fieldsFor.formDefinitionId}
+                canEdit={canWfEdit}
+                onClose={() => setFieldsFor(null)}
+                onChanged={reload}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
