@@ -91,6 +91,8 @@ public static class DependencyInjection
         // Notification engine (bell + email queue) + document-expiry rule scanner
         services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationService,
             HR.Modules.Platform.Services.Notifications.NotificationService>();
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.INotificationRecipientResolver,
+            HR.Modules.Platform.Services.Notifications.NotificationRecipientResolver>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IDocumentExpiryScanner,
             HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IEmailQueueDrainer,
