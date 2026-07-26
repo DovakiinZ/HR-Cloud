@@ -95,10 +95,10 @@ public sealed class NotificationRecipientResolver : INotificationRecipientResolv
 
     private async Task<IReadOnlyList<Guid>> UsersInRoleKeywordAsync(string keyword, CancellationToken ct)
     {
-        return await (from ur in _db.UserRoles
-                      join usr in _db.Users on ur.UserId equals usr.Id
+        return await (from u in _db.Users.Where(u => u.IsActive)
+                      join ur in _db.UserRoles on u.Id equals ur.UserId
                       join role in _db.Roles on ur.RoleId equals role.Id
-                      where usr.IsActive && EF.Functions.ILike(role.Name, $"%{keyword}%")
-                      select usr.Id).Distinct().ToListAsync(ct);
+                      where EF.Functions.ILike(role.Name, $"%{keyword}%")
+                      select u.Id).Distinct().ToListAsync(ct);
     }
 }
