@@ -250,6 +250,10 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Notifications.NotificationRule> NotificationRules => Set<HR.Domain.Engines.Notifications.NotificationRule>();
     public DbSet<HR.Domain.Engines.Notifications.NotificationDispatch> NotificationDispatches => Set<HR.Domain.Engines.Notifications.NotificationDispatch>();
 
+    // Workflow notification framework (SP1): configurable per-event rules + idempotent dispatch ledger
+    public DbSet<HR.Domain.Engines.Notifications.WorkflowNotificationRule> WorkflowNotificationRules => Set<HR.Domain.Engines.Notifications.WorkflowNotificationRule>();
+    public DbSet<HR.Domain.Engines.Notifications.WorkflowNotificationDispatch> WorkflowNotificationDispatches => Set<HR.Domain.Engines.Notifications.WorkflowNotificationDispatch>();
+
     // Financial Calculation Engine (immutable ledger + versioned payroll definitions + configurable rules)
     public DbSet<HR.Domain.Engines.Finance.Entities.FinancialLedgerEntry> FinancialLedgerEntries => Set<HR.Domain.Engines.Finance.Entities.FinancialLedgerEntry>();
     public DbSet<HR.Domain.Engines.Finance.Entities.PayrollDefinition> PayrollDefinitions => Set<HR.Domain.Engines.Finance.Entities.PayrollDefinition>();
