@@ -39,8 +39,10 @@ public static class RecipientSpecParser
             foreach (var item in arr.EnumerateArray())
             {
                 if (item.ValueKind != JsonValueKind.Object) { errors.Add("Each recipient must be an object."); continue; }
+                var hadUnknownProp = false;
                 foreach (var prop in item.EnumerateObject())
-                    if (!RecipientKeys.Contains(prop.Name)) errors.Add($"Unknown property '{prop.Name}' on recipient.");
+                    if (!RecipientKeys.Contains(prop.Name)) { errors.Add($"Unknown property '{prop.Name}' on recipient."); hadUnknownProp = true; }
+                if (hadUnknownProp) continue;
 
                 if (!item.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String
                     || !Enum.TryParse<NotificationRecipientType>(typeEl.GetString(), ignoreCase: false, out var type))
