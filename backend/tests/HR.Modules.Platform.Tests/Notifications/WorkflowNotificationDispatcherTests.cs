@@ -208,6 +208,33 @@ public class WorkflowNotificationDispatcherTests
     }
 
     /// <summary>
+    /// Wiring regression: a seeded LEAVE_REQUEST StepAssigned→CurrentApprover rule causes the
+    /// assigned approver to be notified when dispatched with a pending step.
+    /// This proves the approver-on-assign behaviour survives the Task-5 refactor.
+    /// </summary>
+    [Fact]
+    public async Task StepAssigned_notifies_current_approver()
+    {
+        var u = new FakeUser(); await using var db = Db(u);
+        var inst = SeedInstance(db, u.TenantId);
+        db.Set<HR.Domain.Engines.Requests.RequestType>().Add(new RequestType { Id = inst.RequestTypeId,
+            TenantId = u.TenantId, Code = "LEAVE_REQUEST", NameEn = "L", NameAr = "ل", FormDefinitionId = Guid.NewGuid(), IsActive = true });
+        db.Set<WorkflowNotificationRule>().Add(Rule(u.TenantId, "LEAVE_REQUEST", WorkflowNotificationEvent.StepAssigned, null,
+            new RecipientSpec(NotificationRecipientType.CurrentApprover)));
+        await db.SaveChangesAsync();
+        var approver = Guid.NewGuid();
+        var resolver = new ProgrammableResolver(); resolver.Map[NotificationRecipientType.CurrentApprover] = new[] { approver };
+        var spy = new SpyNotifier();
+        var step = new RequestApproval { Id = Guid.NewGuid(), RequestInstanceId = inst.Id, StepOrder = 1,
+            StepNameAr = "1", StepNameEn = "1", ApproverType = ApproverType.DirectManager,
+            AssignedToUserId = approver, Status = RequestApprovalStatus.Pending };
+
+        await Sut(db, resolver, spy).DispatchAsync(WorkflowNotificationEvent.StepAssigned, inst, step, default);
+
+        spy.Notified.Should().ContainSingle().Which.Should().Be(approver);
+    }
+
+    /// <summary>
     /// Two rules in the SAME winning tier (both global, event=Submitted, step=null).
     /// Rule A → Requester, Rule B → DirectManager.
     /// Both resolve to the SAME userX.

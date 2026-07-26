@@ -23,18 +23,18 @@ public sealed class RequestEngine : IRequestEngine
     private readonly IAuditEngine _audit;
     private readonly ILeaveService _leave;
     private readonly ICompletionEngine _completion;
-    private readonly HR.Modules.Platform.Services.Notifications.INotificationService _notify;
     private readonly HR.Modules.Platform.Services.Documents.IDocumentGenerationService _docGen;
+    private readonly HR.Modules.Platform.Services.Notifications.IWorkflowNotificationDispatcher _dispatcher;
 
     private const int SlaHours = 48;
     private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
 
     public RequestEngine(ApplicationDbContext db, ICurrentUserService user, ITimelineEngine timeline, IAuditEngine audit, ILeaveService leave,
         ICompletionEngine completion,
-        HR.Modules.Platform.Services.Notifications.INotificationService notify,
-        HR.Modules.Platform.Services.Documents.IDocumentGenerationService docGen)
+        HR.Modules.Platform.Services.Documents.IDocumentGenerationService docGen,
+        HR.Modules.Platform.Services.Notifications.IWorkflowNotificationDispatcher dispatcher)
     {
-        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _completion = completion; _notify = notify; _docGen = docGen;
+        _db = db; _user = user; _timeline = timeline; _audit = audit; _leave = leave; _completion = completion; _docGen = docGen; _dispatcher = dispatcher;
     }
 
     // ── Submit ────────────────────────────────────────────────────────────────
@@ -138,16 +138,11 @@ public sealed class RequestEngine : IRequestEngine
             $"Request {instance.RequestNumber} submitted", $"تم تقديم الطلب {instance.RequestNumber}", new { type.Code }, ct);
         await _audit.LogChange("RequestInstance", instance.Id, "Submitted", null, new { instance.RequestNumber, type.Code }, ct);
 
+        await _dispatcher.DispatchAsync(WorkflowNotificationEvent.Submitted, instance, null, ct);
         if (chain.Count > 0)
         {
-            var first = chain[0];
-            if (first.AssignedToUserId is { } approverId)
-            {
-                var who = $"{employee.FirstNameAr ?? employee.FirstName} {employee.LastNameAr ?? employee.LastName}".Trim();
-                await NotifyAsync(approverId, "طلب جديد بانتظار موافقتك", "A request needs your approval",
-                    $"{type.NameAr} جديد بانتظار موافقتك من الموظف {who} — {instance.RequestNumber}",
-                    $"New {type.NameEn} awaiting your approval from {who} — {instance.RequestNumber}", "RequestApproval", instance.Id, ct);
-            }
+            var firstStep = chain.OrderBy(a => a.StepOrder).FirstOrDefault();
+            await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepAssigned, instance, firstStep, ct);
         }
         else
         {
@@ -155,6 +150,8 @@ public sealed class RequestEngine : IRequestEngine
             var completion = await _completion.ExecuteAsync(instance.Id, ct);
             instance.Status = completion.Success ? RequestStatus.Approved : RequestStatus.CompletionFailed;
             instance.DecidedAt = DateTime.UtcNow;
+            if (completion.Success)
+                await _dispatcher.DispatchAsync(WorkflowNotificationEvent.FinalApproved, instance, null, ct);
         }
 
         // Trigger: Submitted (always). If there is no approval chain the request is final on submit.
@@ -200,13 +197,14 @@ public sealed class RequestEngine : IRequestEngine
             step.Status = RequestApprovalStatus.Rejected;
             await TransitionAsync(instance, RequestStatus.Rejected, comment, "تم رفض الطلب", "Request rejected", ct);
             await CloseWorkflowAsync(instance, WorkflowStatus.Rejected, ct);
-            await NotifySubmitterAsync(instance, "تم رفض طلبك", "Your request was rejected", ct);
+            await _dispatcher.DispatchAsync(WorkflowNotificationEvent.Rejected, instance, step, ct);
             await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Rejected, ct);
             await _db.SaveChangesAsync(ct);
             return instance;
         }
 
         step.Status = RequestApprovalStatus.Approved;
+        await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepApproved, instance, step, ct);
 
         // Trigger: FirstApproval — fired the first time any approver approves (step 1).
         if (step.StepOrder == 1)
@@ -220,9 +218,7 @@ public sealed class RequestEngine : IRequestEngine
         {
             instance.CurrentStepOrder = next.StepOrder;
             await TransitionAsync(instance, RequestStatus.InProgress, comment, "تمت موافقة خطوة", "Step approved", ct);
-            if (next.AssignedToUserId is { } nextApprover)
-                await NotifyAsync(nextApprover, "طلب بانتظار موافقتك", "A request needs your approval",
-                    $"{instance.RequestType.NameAr} — {instance.RequestNumber}", $"{instance.RequestType.NameEn} — {instance.RequestNumber}", "RequestApproval", instance.Id, ct);
+            await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepAssigned, instance, next, ct);
             await _db.SaveChangesAsync(ct);
             return instance;
         }
@@ -235,7 +231,7 @@ public sealed class RequestEngine : IRequestEngine
         var completion = await _completion.ExecuteAsync(instance.Id, ct);
         if (completion.Success)
         {
-            await NotifySubmitterAsync(instance, "تمت الموافقة على طلبك", "Your request was approved", ct);
+            await _dispatcher.DispatchAsync(WorkflowNotificationEvent.FinalApproved, instance, null, ct);
             // Triggers: FinalApproval + Completed (last approver approved → request is final).
             await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.FinalApproval, ct);
             await _docGen.GenerateForTriggerAsync(instance.Id, DocumentTriggerEvent.Completed, ct);
@@ -271,7 +267,7 @@ public sealed class RequestEngine : IRequestEngine
         step.Comment = comment;
         await TransitionAsync(instance, RequestStatus.Returned, comment, "أُعيد الطلب للتعديل", "Returned for changes", ct);
         await CloseWorkflowAsync(instance, WorkflowStatus.Cancelled, ct);
-        await NotifySubmitterAsync(instance, "أُعيد طلبك للتعديل", "Your request was returned for changes", ct);
+        await _dispatcher.DispatchAsync(WorkflowNotificationEvent.Returned, instance, step, ct);
         await _db.SaveChangesAsync(ct);
         return instance;
     }
@@ -488,21 +484,6 @@ public sealed class RequestEngine : IRequestEngine
             RequestInstanceId = instance.Id, FromStatus = from, ToStatus = to,
             ActorUserId = _user.UserId, NoteAr = noteAr, NoteEn = noteEn, At = DateTime.UtcNow,
         });
-
-    private async Task NotifySubmitterAsync(RequestInstance instance, string titleAr, string titleEn, CancellationToken ct)
-    {
-        var submitterUserId = await _db.Employees.Where(e => e.Id == instance.EmployeeId).Select(e => e.UserId).FirstOrDefaultAsync(ct);
-        if (submitterUserId is { } uid)
-            await NotifyAsync(uid, titleAr, titleEn, instance.RequestNumber, instance.RequestNumber, "RequestDecision", instance.Id, ct);
-    }
-
-    // Delegates to the central notification engine (bell + queued email). Approver
-    // notifications link to the Approval Center; requester notifications to My Requests.
-    private async Task NotifyAsync(Guid userId, string titleAr, string titleEn, string bodyAr, string bodyEn, string category, Guid entityId, CancellationToken ct)
-    {
-        var link = category == "RequestApproval" ? "/approvals" : "/requests";
-        await _notify.NotifyAsync(userId, titleAr, titleEn, bodyAr, bodyEn, category, entityId, link, ct: ct);
-    }
 
     private async Task<string> NextRequestNumberAsync(CancellationToken ct)
     {
