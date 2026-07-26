@@ -2,7 +2,9 @@ using System.Text.Json;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Completion;
 using HR.Application.Engines.Forms;
+using HR.Application.Engines.Notifications;
 using HR.Domain.Engines.Forms;
+using HR.Domain.Engines.Notifications;
 using HR.Domain.Engines.Requests;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
@@ -38,8 +40,11 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// notification) effects, so existing tenants reconcile them on the next provision.
     /// v3: stamp form-field classification (SystemRequired / Optional) on first provision;
     /// backfill existing tenants' fields where classification is absent.
+    /// v4: seed default workflow notification rules for LEAVE_REQUEST (5 rules: Submitted,
+    /// StepAssigned, Rejected, Returned, FinalApproved) — non-destructive; never overwrites
+    /// a tenant-customized or tenant-authored rule.
     /// </summary>
-    public const int CurrentSeedVersion = 3;
+    public const int CurrentSeedVersion = 4;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
@@ -94,6 +99,7 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
 
             changes.AddRange(ReconcileRequiredEffects(type));
             changes.AddRange(await BackfillFieldClassificationsAsync(type, ct));
+            changes.AddRange(ReconcileWorkflowNotificationRules(type));
             type.SeedVersion = CurrentSeedVersion;
 
             // from == 0 means the row had never been stamped: either just created above, or created
@@ -220,6 +226,45 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             changes.Add($"classified {field.Code} as {target}");
         }
 
+        return changes;
+    }
+
+    /// <summary>Seed the product-default workflow notification rules for a system request type.
+    /// Non-destructive: inserts only rules whose SystemKey is absent, upgrades an untouched
+    /// system-owned rule's content, and never modifies a tenant-authored or customized rule.</summary>
+    internal List<string> ReconcileWorkflowNotificationRules(RequestType type)
+    {
+        var changes = new List<string>();
+        var seeded = SystemWorkflowNotificationRules.For(type.Code);
+        if (seeded.Count == 0) return changes;
+
+        var existing = _db.WorkflowNotificationRules
+            .Where(r => r.TenantId == type.TenantId && r.SystemKey != null)
+            .ToDictionary(r => r.SystemKey!, StringComparer.Ordinal);
+
+        foreach (var s in seeded)
+        {
+            if (existing.TryGetValue(s.SystemKey, out var row))
+            {
+                if (row.IsCustomized) continue;           // tenant edited a system rule → never touch
+                // Safe in-place upgrade of an untouched system rule.
+                row.Event = s.Event; row.StepOrder = s.StepOrder;
+                row.RecipientsJson = RecipientSpecParser.Serialize(s.Recipients);
+                row.SubjectAr = s.SubjectAr; row.SubjectEn = s.SubjectEn;
+                row.BodyAr = s.BodyAr; row.BodyEn = s.BodyEn;
+                continue;
+            }
+            _db.WorkflowNotificationRules.Add(new WorkflowNotificationRule
+            {
+                Id = Guid.NewGuid(), TenantId = type.TenantId, RequestTypeCode = type.Code,
+                Event = s.Event, StepOrder = s.StepOrder,
+                RecipientsJson = RecipientSpecParser.Serialize(s.Recipients),
+                SubjectAr = s.SubjectAr, SubjectEn = s.SubjectEn, BodyAr = s.BodyAr, BodyEn = s.BodyEn,
+                ChannelBell = true, ChannelEmail = true, IsActive = true,
+                IsSystemOwned = true, SystemKey = s.SystemKey, IsCustomized = false,
+            });
+            changes.Add($"+notif:{s.SystemKey}");
+        }
         return changes;
     }
 
