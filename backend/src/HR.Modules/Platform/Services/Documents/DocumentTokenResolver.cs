@@ -14,7 +14,7 @@ public interface IDocumentTokenResolver
     Task<Dictionary<string, string>> ResolveForRequestAsync(Guid requestInstanceId, CancellationToken ct);
 }
 
-public sealed class DocumentTokenResolver : IDocumentTokenResolver
+public sealed class DocumentTokenResolver : IDocumentTokenResolver, IRequestTokenResolver
 {
     private readonly ApplicationDbContext _db;
     public DocumentTokenResolver(ApplicationDbContext db) => _db = db;
@@ -131,4 +131,9 @@ public sealed class DocumentTokenResolver : IDocumentTokenResolver
         "Approved" => "معتمد", "Rejected" => "مرفوض", "Submitted" => "مُقدّم", "InProgress" => "قيد المعالجة",
         "Returned" => "مُعاد", "Cancelled" => "ملغي", "Pending" => "بانتظار", _ => status,
     };
+
+    // Explicit implementation of the thin IRequestTokenResolver seam used by the dispatcher.
+    async Task<IReadOnlyDictionary<string, string>> IRequestTokenResolver.ResolveForRequestAsync(
+        Guid requestInstanceId, CancellationToken ct)
+        => await ResolveForRequestAsync(requestInstanceId, ct);
 }

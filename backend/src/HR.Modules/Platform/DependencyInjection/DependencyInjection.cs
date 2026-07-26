@@ -97,6 +97,8 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Notifications.DocumentExpiryScanner>();
         services.AddScoped<HR.Modules.Platform.Services.Notifications.IEmailQueueDrainer,
             HR.Modules.Platform.Services.Notifications.EmailQueueDrainer>();
+        services.AddScoped<HR.Modules.Platform.Services.Notifications.IWorkflowNotificationDispatcher,
+            HR.Modules.Platform.Services.Notifications.WorkflowNotificationDispatcher>();
 
         // Completion Effects Engine — generic orchestrator + flags→intents factory + executor
         // registry. Executors are auto-discovered from this assembly (Leave/Expense/Loan executors
@@ -140,8 +142,11 @@ public static class DependencyInjection
             HR.Modules.Platform.Services.Leaves.LeaveRecordService>();
 
         // Official document rendering (QuestPDF) + token resolution + mapping-driven generation
-        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentTokenResolver,
-            HR.Modules.Platform.Services.Documents.DocumentTokenResolver>();
+        services.AddScoped<HR.Modules.Platform.Services.Documents.DocumentTokenResolver>();
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentTokenResolver>(
+            sp => sp.GetRequiredService<HR.Modules.Platform.Services.Documents.DocumentTokenResolver>());
+        services.AddScoped<HR.Modules.Platform.Services.Documents.IRequestTokenResolver>(
+            sp => sp.GetRequiredService<HR.Modules.Platform.Services.Documents.DocumentTokenResolver>());
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentRenderer,
             HR.Modules.Platform.Services.Documents.DocumentRenderer>();
         services.AddScoped<HR.Modules.Platform.Services.Documents.IDocumentGenerationService,
