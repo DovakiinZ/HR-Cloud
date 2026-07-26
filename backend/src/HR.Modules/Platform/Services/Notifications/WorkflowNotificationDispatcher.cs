@@ -147,6 +147,9 @@ public sealed class WorkflowNotificationDispatcher : IWorkflowNotificationDispat
                 var bodyAr = Render(rule.BodyAr, tokens);
                 var bodyEn = Render(rule.BodyEn, tokens);
 
+                // TODO(SP-templates): honor rule.ChannelBell — the reused INotificationService.NotifyAsync
+                // always writes a bell row; only the email channel is gated today. All seeded rules are
+                // bell+email so this is inert until the notification-template admin UI can set ChannelBell=false.
                 await _notifier.NotifyAsync(
                     uid, subjAr, subjEn, bodyAr, bodyEn,
                     "RequestWorkflow", instance.Id,
