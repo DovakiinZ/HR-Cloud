@@ -204,7 +204,6 @@ public sealed class RequestEngine : IRequestEngine
         }
 
         step.Status = RequestApprovalStatus.Approved;
-        await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepApproved, instance, step, ct);
 
         // Trigger: FirstApproval — fired the first time any approver approves (step 1).
         if (step.StepOrder == 1)
@@ -216,6 +215,7 @@ public sealed class RequestEngine : IRequestEngine
 
         if (next is not null)
         {
+            await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepApproved, instance, step, ct);
             instance.CurrentStepOrder = next.StepOrder;
             await TransitionAsync(instance, RequestStatus.InProgress, comment, "تمت موافقة خطوة", "Step approved", ct);
             await _dispatcher.DispatchAsync(WorkflowNotificationEvent.StepAssigned, instance, next, ct);
