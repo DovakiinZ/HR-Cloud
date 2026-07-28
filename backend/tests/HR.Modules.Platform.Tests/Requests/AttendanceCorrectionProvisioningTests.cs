@@ -304,4 +304,78 @@ public class AttendanceCorrectionProvisioningTests
         reloadedEff.ConfigurationJson.Should().Be(cfgBefore,
             because: "provisioning must not refresh effect config on tenant-authored types");
     }
+
+    // ─── Task-8 Fact 3 ────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// A tenant who remapped the "reason" input to a renamed form field ("justification") must
+    /// survive the v4→v5 upgrade: the remap is preserved AND the missing checkIn/checkOut inputs
+    /// are merged in. This verifies the merge-missing-keys behaviour (not wholesale replace).
+    /// </summary>
+    [Fact]
+    public async Task Tenant_remap_survives_and_missing_keys_are_added()
+    {
+        // ── Arrange ──────────────────────────────────────────────────────────
+        var db = MakeDb();
+        var (_, _, svc) = BuildHarness(db);
+
+        // Seed the full catalogue first.
+        await svc.ProvisionTenantAsync(FakeUser.TenantId, FakeUser.UserId, default);
+
+        var correction = await db.RequestTypes
+            .Include(t => t.Effects)
+            .FirstAsync(t => t.Code == "ATTENDANCE_CORRECTION");
+        var formId = correction.FormDefinitionId;
+
+        // Remove checkIn / checkOut from the form (simulating a v4 tenant).
+        var punch = await db.FormFields
+            .Where(f => f.FormDefinitionId == formId && (f.Code == "checkIn" || f.Code == "checkOut"))
+            .ToListAsync();
+        db.FormFields.RemoveRange(punch);
+
+        // Simulate the tenant renaming the "reason" field to "justification" and updating the
+        // effect's ConfigurationJson accordingly (only date + reason, with reason → justification).
+        var remappedCfg = EffectConfiguration.Serialize(new Dictionary<string, EffectValueMapping>
+        {
+            ["date"]   = new() { Source = EffectValueSource.FormField, Key = "startDate"      },
+            ["reason"] = new() { Source = EffectValueSource.FormField, Key = "justification"  },  // ← tenant remap
+        });
+        var eff = await db.Set<RequestEffectDefinition>()
+            .FirstAsync(e => e.RequestTypeId == correction.Id
+                && e.EffectType == EffectTypes.AttendanceCorrect);
+        eff.ConfigurationJson = remappedCfg;
+
+        // Roll back SeedVersion so the v4→v5 upgrade path runs.
+        correction.SeedVersion = 4;
+        await db.SaveChangesAsync();
+
+        // ── Act ───────────────────────────────────────────────────────────────
+        await svc.ProvisionTenantAsync(FakeUser.TenantId, FakeUser.UserId, default);
+
+        // ── Assert ────────────────────────────────────────────────────────────
+        var updatedEff = await db.Set<RequestEffectDefinition>()
+            .FirstAsync(e => e.RequestTypeId == correction.Id
+                && e.EffectType == EffectTypes.AttendanceCorrect);
+
+        var cfg = EffectConfiguration.TryParse(updatedEff.ConfigurationJson);
+        cfg.Should().NotBeNull();
+
+        // The tenant's remap of "reason" to "justification" must survive.
+        cfg!.Inputs.Should().ContainKey("reason",
+            because: "the reason input key must still be present");
+        cfg.Inputs["reason"].Key.Should().Be("justification",
+            because: "the tenant remapped reason → justification and that must be preserved");
+
+        // The missing punch fields must have been merged in (not overwritten).
+        cfg.Inputs.Should().ContainKey("checkIn",
+            because: "checkIn was absent from the v4 config and must be added by the merge");
+        cfg.Inputs.Should().ContainKey("checkOut",
+            because: "checkOut was absent from the v4 config and must be added by the merge");
+
+        // The date mapping must also be untouched.
+        cfg.Inputs.Should().ContainKey("date",
+            because: "date was already present and must survive");
+        cfg.Inputs["date"].Key.Should().Be("startDate",
+            because: "the date → startDate mapping must not be altered");
+    }
 }

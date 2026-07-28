@@ -310,7 +310,15 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             changes.Add($"+field:{spec.Code}");
         }
 
-        // Refresh the ConfigurationJson for still-required effects (never a non-required one).
+        // Merge-missing-keys into the ConfigurationJson for still-required effects.
+        //
+        // Deliberately NOT a wholesale replace: a tenant may have legitimately remapped an input
+        // (e.g. renamed the "reason" form field to "justification" and updated the effect's config
+        // to point at "justification"). Overwriting their mapping would silently break their effect.
+        //
+        // Strategy: parse the current config, add only the keys that are absent from it, and write
+        // back only when at least one key was actually added. Keys already present — including any
+        // tenant-remapped ones — are left completely untouched.
         if (SystemRequestEffects.Required.TryGetValue(type.Code, out var specs))
         {
             foreach (var s in specs)
@@ -320,10 +328,22 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
                     && e.Trigger == s.Trigger
                     && e.IsRequired);
                 if (eff is null) continue;
-                var shippedCfg = EffectConfiguration.Serialize(s.Inputs);
-                if (eff.ConfigurationJson != shippedCfg)
+
+                var current = EffectConfiguration.TryParse(eff.ConfigurationJson);
+                if (current is null) continue;   // malformed JSON — do not corrupt it further
+
+                var currentInputs = current.Inputs;
+                var added = false;
+                foreach (var (key, mapping) in s.Inputs)
                 {
-                    eff.ConfigurationJson = shippedCfg;
+                    if (currentInputs.ContainsKey(key)) continue;   // present (possibly tenant-remapped) → leave
+                    currentInputs[key] = mapping;
+                    added = true;
+                }
+
+                if (added)
+                {
+                    eff.ConfigurationJson = EffectConfiguration.Serialize(currentInputs);
                     changes.Add($"~cfg:{s.EffectType}");
                 }
             }
