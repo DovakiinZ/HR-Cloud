@@ -74,6 +74,14 @@ public class AttendanceCorrectionExecutorTests
     private sealed class OpenPeriodGuard : HR.Application.Engines.Finance.IPayrollPeriodGuard
     { public Task EnsurePeriodOpenForAsync(Guid e, DateTime d, CancellationToken ct = default) => Task.CompletedTask; }
 
+    private sealed class ClosedPeriodGuard : HR.Application.Engines.Finance.IPayrollPeriodGuard
+    {
+        public Task EnsurePeriodOpenForAsync(Guid e, DateTime d, CancellationToken ct = default)
+            => throw new HR.Application.Engines.Finance.PayrollPeriodClosedException(
+                new HR.Application.Engines.Finance.PayrollPeriodClosedPayload(
+                    "PAYROLL_PERIOD_CLOSED", Guid.NewGuid(), "PR-1", Guid.NewGuid(), d.Year, d.Month, "Locked"));
+    }
+
     private sealed class FakePerms : HR.Application.Engines.Permissions.IPermissionResolver
     {
         private readonly string[] _p;
@@ -82,10 +90,9 @@ public class AttendanceCorrectionExecutorTests
             => Task.FromResult((IReadOnlyList<string>)_p);
     }
 
-    // Uses 2-arg ctor for this task; guard/perms fakes kept for future tasks.
     private static AttendanceCorrectionExecutor Sut(ApplicationDbContext db, HR.Modules.Attendance.Services.IAttendanceService att,
         HR.Application.Engines.Finance.IPayrollPeriodGuard? guard = null, HR.Application.Engines.Permissions.IPermissionResolver? perms = null)
-        => new(db, att);
+        => new(db, att, guard ?? new OpenPeriodGuard(), perms ?? new FakePerms());
 
     // ── Tests ──────────────────────────────────────────────────────────────────
 
@@ -160,5 +167,54 @@ public class AttendanceCorrectionExecutorTests
         second.IsSkipped.Should().BeTrue();
         second.SkipReason.Should().Be("AlreadyApplied");
         att.CorrectedRecordId.Should().BeNull();                 // engine NOT called again
+    }
+
+    [Fact]
+    public async Task Finalized_period_without_authorization_blocks()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = Guid.NewGuid();
+        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,5), Status = AttendanceStatus.Late, LateMinutes = 45 });
+        await db.SaveChangesAsync();
+        var att = new FakeAttendance(db);
+        var sut = new AttendanceCorrectionExecutor(db, att, new ClosedPeriodGuard(), new FakePerms(/* no perms */));
+        var ctx = Eff(emp, "{\"date\":\"2026-07-05\",\"checkIn\":\"08:00\",\"checkOut\":\"17:00\",\"reason\":\"x\"}", actor: Guid.NewGuid());
+
+        var act = () => sut.ExecuteAsync(ctx, default);
+        await act.Should().ThrowAsync<Exception>();
+        att.CorrectedRecordId.Should().BeNull();                 // not applied
+    }
+
+    [Fact]
+    public async Task Finalized_period_with_authorization_applies_and_signals()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = Guid.NewGuid(); var actor = Guid.NewGuid();
+        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,5), Status = AttendanceStatus.Late, LateMinutes = 45 });
+        await db.SaveChangesAsync();
+        var att = new FakeAttendance(db);
+        var sut = new AttendanceCorrectionExecutor(db, att, new ClosedPeriodGuard(), new FakePerms("Payroll.Run.Amend"));
+        var ctx = Eff(emp, "{\"date\":\"2026-07-05\",\"checkIn\":\"08:00\",\"checkOut\":\"17:00\",\"reason\":\"x\"}", actor: actor);
+
+        var result = await sut.ExecuteAsync(ctx, default);
+
+        att.CorrectedRecordId.Should().NotBeNull();              // applied
+        (await db.Notifications.CountAsync(n => n.UserId == actor)).Should().Be(1); // signal to actor
+        result.IsSkipped.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Open_period_does_not_signal()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = Guid.NewGuid(); var actor = Guid.NewGuid();
+        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,5), Status = AttendanceStatus.Late, LateMinutes = 45 });
+        await db.SaveChangesAsync();
+        var att = new FakeAttendance(db);
+        var sut = new AttendanceCorrectionExecutor(db, att, new OpenPeriodGuard(), new FakePerms("Payroll.Run.Amend"));
+        var ctx = Eff(emp, "{\"date\":\"2026-07-05\",\"checkIn\":\"08:00\",\"checkOut\":\"17:00\",\"reason\":\"x\"}", actor: actor);
+
+        await sut.ExecuteAsync(ctx, default);
+        (await db.Notifications.CountAsync(n => n.UserId == actor)).Should().Be(0);
     }
 }
