@@ -466,4 +466,41 @@ public sealed class RequestSeeder : IRequestSeeder
     private sealed record FormSpec(string Code, string NameAr, string NameEn, List<FieldSpec> Fields);
     private sealed record FieldSpec(string Code, string NameAr, string NameEn, FieldType Type, bool Required, string? Placeholder = null, string? Options = null);
     private sealed record ImpactSpec(bool Leave, bool Attendance, bool Payroll, bool Expenses, bool Loans, bool CreatesLoan, bool Finance, bool Document, bool ExpenseRecord, bool AttendancePunch);
+
+    // ── IRequestSeeder.SystemFormFields ─────────────────────────────────────
+
+    private static readonly IReadOnlyDictionary<string, Func<FormSpec>> FormBuilders =
+        new Dictionary<string, Func<FormSpec>>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["LEAVE_REQUEST"]          = LeaveRequestForm,
+            ["SALARY_CERTIFICATE"]     = SalaryCertificateForm,
+            ["SALARY_ADVANCE"]         = () => AmountForm("FORM_SALARY_ADVANCE", "نموذج سلفة راتب", "Salary Advance Form"),
+            ["LOAN_REQUEST"]           = LoanForm,
+            ["ATTENDANCE_CORRECTION"]  = AttendanceCorrectionForm,
+            ["BUSINESS_TRIP"]          = BusinessTripForm,
+            ["EXPENSE_CLAIM"]          = ExpenseForm,
+            ["EMPLOYEE_DATA_UPDATE"]   = DataUpdateForm,
+            ["MISSING_PUNCH"]          = MissingPunchForm,
+            ["OVERTIME_REQUEST"]       = OvertimeForm,
+            ["WORK_FROM_HOME"]         = () => DateRangeForm("FORM_WFH", "نموذج عمل عن بُعد", "Work From Home Form"),
+            ["RETURN_FROM_LEAVE"]      = ReturnFromLeaveForm,
+            ["RESIGNATION"]            = ResignationForm,
+            ["CLEARANCE"]              = ClearanceForm,
+            ["TRAINING_REQUEST"]       = TrainingForm,
+            ["EQUIPMENT_REQUEST"]      = EquipmentForm,
+            ["CUSTODY_REQUEST"]        = CustodyForm,
+            ["COMPLAINT"]              = ComplaintForm,
+            ["CONTRACT_RENEWAL"]       = ContractRenewalForm,
+            ["DIRECT_MANAGER_CHANGE"]  = ManagerChangeForm,
+        };
+
+    /// <inheritdoc/>
+    public IReadOnlyList<FormFieldSpec> SystemFormFields(string requestCode)
+    {
+        if (!FormBuilders.TryGetValue(requestCode, out var builder)) return Array.Empty<FormFieldSpec>();
+        var spec = builder();
+        return spec.Fields
+            .Select(f => new FormFieldSpec(f.Code, f.NameAr, f.NameEn, f.Type, f.Required, f.Placeholder, f.Options))
+            .ToList();
+    }
 }

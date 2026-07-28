@@ -43,8 +43,11 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// v4: seed default workflow notification rules for LEAVE_REQUEST (5 rules: Submitted,
     /// StepAssigned, Rejected, Returned, FinalApproved) — non-destructive; never overwrites
     /// a tenant-customized or tenant-authored rule.
+    /// v5: reconcile missing shipped system form fields by Code (additive, never removes), and
+    /// refresh the system effect's ConfigurationJson for still-required effects on system-owned,
+    /// un-customized ATTENDANCE_CORRECTION forms.
     /// </summary>
-    public const int CurrentSeedVersion = 4;
+    public const int CurrentSeedVersion = 5;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
@@ -100,6 +103,7 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             changes.AddRange(ReconcileRequiredEffects(type));
             changes.AddRange(await BackfillFieldClassificationsAsync(type, ct));
             changes.AddRange(ReconcileWorkflowNotificationRules(type));
+            changes.AddRange(await ReconcileSystemFormFieldsAsync(type, ct));
             type.SeedVersion = CurrentSeedVersion;
 
             // from == 0 means the row had never been stamped: either just created above, or created
@@ -265,6 +269,66 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             });
             changes.Add($"+notif:{s.SystemKey}");
         }
+        return changes;
+    }
+
+    /// <summary>Add shipped system form fields that are missing from a system request's form (by Code),
+    /// and refresh the system effect's ConfigurationJson for still-required effects to the shipped
+    /// mapping. Never removes or reorders tenant fields; never touches a tenant-authored
+    /// (IsSystem == false) type or a non-required effect.</summary>
+    private async Task<List<string>> ReconcileSystemFormFieldsAsync(RequestType type, CancellationToken ct)
+    {
+        var changes = new List<string>();
+        if (!type.IsSystem || type.FormDefinitionId == Guid.Empty) return changes;
+
+        // Shipped fields for this request code, from the seeder's form spec.
+        var shipped = _seeder.SystemFormFields(type.Code);
+        if (shipped.Count == 0) return changes;
+
+        var existing = await _db.Set<FormField>()
+            .Where(f => f.FormDefinitionId == type.FormDefinitionId)
+            .ToListAsync(ct);
+        var byCode = existing.ToDictionary(f => f.Code, StringComparer.OrdinalIgnoreCase);
+        var maxSort = existing.Count == 0 ? 0 : existing.Max(f => f.SortOrder);
+
+        foreach (var spec in shipped)
+        {
+            if (byCode.ContainsKey(spec.Code)) continue;      // present (tenant may have edited it) → leave
+            _db.Set<FormField>().Add(new FormField
+            {
+                FormDefinitionId = type.FormDefinitionId,
+                Code = spec.Code,
+                NameAr = spec.NameAr,
+                NameEn = spec.NameEn,
+                FieldType = spec.FieldType,
+                IsRequired = spec.IsRequired,
+                Placeholder = spec.Placeholder,
+                Options = spec.Options,
+                SortOrder = ++maxSort,
+                MetadataJson = FormFieldClassification.With(FieldClassification.Optional),
+            });
+            changes.Add($"+field:{spec.Code}");
+        }
+
+        // Refresh the ConfigurationJson for still-required effects (never a non-required one).
+        if (SystemRequestEffects.Required.TryGetValue(type.Code, out var specs))
+        {
+            foreach (var s in specs)
+            {
+                var eff = type.Effects.FirstOrDefault(e =>
+                    string.Equals(e.EffectType, s.EffectType, StringComparison.OrdinalIgnoreCase)
+                    && e.Trigger == s.Trigger
+                    && e.IsRequired);
+                if (eff is null) continue;
+                var shippedCfg = EffectConfiguration.Serialize(s.Inputs);
+                if (eff.ConfigurationJson != shippedCfg)
+                {
+                    eff.ConfigurationJson = shippedCfg;
+                    changes.Add($"~cfg:{s.EffectType}");
+                }
+            }
+        }
+
         return changes;
     }
 

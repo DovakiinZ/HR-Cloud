@@ -49,8 +49,8 @@ public class WorkflowNotificationSeedTests
         => SystemWorkflowNotificationRules.For("LEAVE_REQUEST").Should().HaveCount(5);
 
     [Fact]
-    public void CurrentSeedVersion_is_four()
-        => RequestProvisioningService.CurrentSeedVersion.Should().Be(4);
+    public void CurrentSeedVersion_is_five()
+        => RequestProvisioningService.CurrentSeedVersion.Should().Be(5);
 
     // ── Reconcile: insert + idempotency ───────────────────────────────────────
 
