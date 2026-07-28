@@ -28,22 +28,9 @@ public class AttendanceExcuseExecutorTests
     private static EffectContext Effctx(Guid emp, JsonElement payload) => new()
     { RequestInstanceId = Guid.NewGuid(), RequestNumber = "R1", RequestTypeCode = "X", EmployeeId = emp, Payload = payload };
 
-    [Fact]
-    public async Task Correction_sets_present_and_zeroes_penalty_minutes()
-    {
-        await using var db = Ctx($"t-{Guid.NewGuid()}");
-        var emp = Guid.NewGuid();
-        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,5), Status = AttendanceStatus.Late, LateMinutes = 45, ShortageMinutes = 20 });
-        await db.SaveChangesAsync();
-
-        var payload = JsonDocument.Parse("{\"date\":\"2026-07-05\",\"reason\":\"excused\"}").RootElement;
-        await new AttendanceCorrectionExecutor(db).ExecuteAsync(Effctx(emp, payload), default);
-
-        var rec = await db.AttendanceRecords.SingleAsync(a => a.EmployeeId == emp);
-        rec.Status.Should().Be(AttendanceStatus.Present);
-        rec.LateMinutes.Should().Be(0);
-        rec.ShortageMinutes.Should().Be(0);
-    }
+    // NOTE: AttendanceCorrectionExecutor was rewritten in SP2 task 3 to route through
+    // IAttendanceService (real recalc) instead of brute-force zeroing. The old test
+    // for that behavior is superseded by AttendanceCorrectionExecutorTests.cs.
 
     [Fact]
     public async Task Leave_upserts_existing_day_and_zeroes_minutes_no_duplicate()
