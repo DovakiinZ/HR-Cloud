@@ -6,6 +6,8 @@ using HR.Domain.Engines.Attendance;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Attendance.Completion;
+using HR.Modules.Attendance.Services;
+using HR.Modules.Employees.Entities;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
 
@@ -216,5 +218,157 @@ public class AttendanceCorrectionExecutorTests
 
         await sut.ExecuteAsync(ctx, default);
         (await db.Notifications.CountAsync(n => n.UserId == actor)).Should().Be(0);
+    }
+
+    // ── Real-service recalculation tests ─────────────────────────────────────
+
+    /// <summary>
+    /// Proves that correcting a punch via the REAL AttendanceService actually recomputes late minutes
+    /// from the shift schedule (anti-regression against the old "always zero" behaviour).
+    ///
+    /// Shift: 08:00–17:00, GraceAfterStart=0, no flexible flag.
+    /// Correction: check-in at 08:45 → 45 minutes late → LateMinutes must be > 0.
+    /// </summary>
+    [Fact]
+    public async Task Real_service_recomputes_late_from_corrected_punch()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+
+        // Seed employee with Active status (default) so RecalcAsync can resolve its scope.
+        var empEntity = new Employee
+        {
+            EmployeeNumber = "E-LATE-01", FirstName = "Rami", LastName = "Test",
+            Email = "rami@t.local", BasicSalary = 3000m,
+            // Status defaults to EmployeeStatus.Active
+        };
+        db.Employees.Add(empEntity);
+        await db.SaveChangesAsync();
+        var emp = empEntity.Id;
+
+        // Seed a fixed day-shift 08:00–17:00 (480 min required, no grace, non-flexible).
+        var shift = new Shift
+        {
+            NameAr = "دوام صباحي", NameEn = "Morning Shift",
+            StartTime = new TimeOnly(8, 0),
+            EndTime = new TimeOnly(17, 0),
+            RequiredMinutes = 480,
+            BreakMinutes = 0,
+            GraceAfterStartMinutes = 0,
+            IsFlexible = false,
+            IsActive = true,
+            WeekendDays = "5,6", // Fri+Sat; 2026-07-05 is Sunday → working day
+        };
+        db.Shifts.Add(shift);
+        await db.SaveChangesAsync();
+
+        // Assign the shift directly to this employee so ShiftResolver gives specificity=4.
+        db.ShiftAssignments.Add(new ShiftAssignment
+        {
+            ShiftId = shift.Id,
+            EmployeeId = emp,
+            EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EffectiveTo = null,   // open-ended
+            Priority = 10,
+            IsActive = true,
+        });
+
+        // Seed an existing attendance record for the day (originally on-time, LateMinutes = 0).
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            EmployeeId = emp, Date = Utc(2026, 7, 5),
+            Status = AttendanceStatus.Present, LateMinutes = 0,
+            CheckIn = Utc(2026, 7, 5).AddHours(8),
+            CheckOut = Utc(2026, 7, 5).AddHours(17),
+        });
+        await db.SaveChangesAsync();
+
+        // Wire the REAL service stack.
+        var real = new AttendanceService(db, new FakeUser(),
+            new AttendanceCalculationService(),
+            new ShiftResolver());
+
+        // Correct check-in to 08:45 — 45 minutes late.
+        var ctx = Eff(emp, "{\"date\":\"2026-07-05\",\"checkIn\":\"08:45\",\"checkOut\":\"17:00\",\"reason\":\"late fixed\"}");
+        await Sut(db, real).ExecuteAsync(ctx, default);
+
+        var rec = await db.AttendanceRecords.SingleAsync(a => a.EmployeeId == emp && a.Date == Utc(2026, 7, 5));
+        rec.LateMinutes.Should().BeGreaterThan(0,
+            "the real AttendanceService must recompute lateness from the shift schedule, not zero it out");
+        rec.LateMinutes.Should().Be(45,
+            "check-in at 08:45 against shift start 08:00 with 0 grace = exactly 45 late minutes");
+    }
+
+    /// <summary>
+    /// Locks in AttendanceCalculationService overnight-shift handling (line 92-93).
+    ///
+    /// Shift: 22:00–06:00 (overnight, 480 min required), GraceAfterStart=0.
+    /// Correction: check-in 22:00, check-out 05:30 → gross=(05:30+24h - 22:00)=450 min,
+    /// worked=450, shortage=30 min. ShortageMinutes must be ≥ 0 (no negative blowup).
+    /// </summary>
+    [Fact]
+    public async Task Real_service_handles_overnight_shift_without_negative_minutes()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+
+        var empEntity = new Employee
+        {
+            EmployeeNumber = "E-NIGHT-01", FirstName = "Nour", LastName = "Test",
+            Email = "nour@t.local", BasicSalary = 3000m,
+        };
+        db.Employees.Add(empEntity);
+        await db.SaveChangesAsync();
+        var emp = empEntity.Id;
+
+        // Overnight shift: starts 22:00, ends 06:00 next day (480 min required).
+        var shift = new Shift
+        {
+            NameAr = "دوام ليلي", NameEn = "Night Shift",
+            StartTime = new TimeOnly(22, 0),
+            EndTime = new TimeOnly(6, 0),
+            RequiredMinutes = 480,
+            BreakMinutes = 0,
+            GraceAfterStartMinutes = 0,
+            IsFlexible = false,
+            IsActive = true,
+            WeekendDays = "5,6", // 2026-07-07 is Tuesday → working day
+        };
+        db.Shifts.Add(shift);
+        await db.SaveChangesAsync();
+
+        db.ShiftAssignments.Add(new ShiftAssignment
+        {
+            ShiftId = shift.Id,
+            EmployeeId = emp,
+            EffectiveFrom = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            EffectiveTo = null,
+            Priority = 10,
+            IsActive = true,
+        });
+
+        // Seed an attendance record for 2026-07-07 with on-time punches.
+        db.AttendanceRecords.Add(new AttendanceRecord
+        {
+            EmployeeId = emp, Date = Utc(2026, 7, 7),
+            Status = AttendanceStatus.Present,
+            CheckIn = Utc(2026, 7, 7).AddHours(22),
+            CheckOut = Utc(2026, 7, 8).AddHours(6),
+        });
+        await db.SaveChangesAsync();
+
+        var real = new AttendanceService(db, new FakeUser(),
+            new AttendanceCalculationService(),
+            new ShiftResolver());
+
+        // Correct check-out to 05:30 (30 min early) — shortage but no negative minutes.
+        var ctx = Eff(emp, "{\"date\":\"2026-07-07\",\"checkIn\":\"22:00\",\"checkOut\":\"05:30\",\"reason\":\"early out corrected\"}");
+        await Sut(db, real).ExecuteAsync(ctx, default);
+
+        var rec = await db.AttendanceRecords.SingleAsync(a => a.EmployeeId == emp && a.Date == Utc(2026, 7, 7));
+        rec.ShortageMinutes.Should().BeGreaterOrEqualTo(0,
+            "overnight gross is corrected by +24h; shortage must never go negative");
+        rec.WorkedMinutes.Should().Be(450,
+            "22:00→05:30 overnight = 450 worked minutes (gross 450, break 0)");
+        rec.ShortageMinutes.Should().Be(30,
+            "required 480 - worked 450 = 30 shortage minutes");
     }
 }
