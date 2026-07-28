@@ -142,4 +142,23 @@ public class AttendanceCorrectionExecutorTests
         var act = () => Sut(db, new FakeAttendance(db)).ExecuteAsync(Eff(emp, json), default);
         await act.Should().ThrowAsync<Exception>();
     }
+
+    [Fact]
+    public async Task Duplicate_run_for_same_request_is_skipped()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = Guid.NewGuid();
+        db.AttendanceRecords.Add(new AttendanceRecord { EmployeeId = emp, Date = Utc(2026,7,5), Status = AttendanceStatus.Late, LateMinutes = 45 });
+        await db.SaveChangesAsync();
+        var att = new FakeAttendance(db);
+        var ctx = Eff(emp, "{\"date\":\"2026-07-05\",\"checkIn\":\"08:00\",\"checkOut\":\"17:00\",\"reason\":\"fixed\"}");
+
+        await Sut(db, att).ExecuteAsync(ctx, default);           // first run applies
+        att.CorrectedRecordId = null;                            // reset probe
+        var second = await Sut(db, att).ExecuteAsync(ctx, default);
+
+        second.IsSkipped.Should().BeTrue();
+        second.SkipReason.Should().Be("AlreadyApplied");
+        att.CorrectedRecordId.Should().BeNull();                 // engine NOT called again
+    }
 }

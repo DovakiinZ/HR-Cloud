@@ -36,6 +36,15 @@ public sealed class AttendanceCorrectionExecutor : IEffectExecutor
         if (!PunchTime.IsValid(checkIn) || !PunchTime.IsValid(checkOut))
             throw new ValidationException(new[] { new ValidationFailure("punch", "صيغة الوقت يجب أن تكون HH:mm / Punch times must be HH:mm.") });
 
+        var already = await _db.AttendanceRecords.AnyAsync(a =>
+            a.EmployeeId == ctx.EmployeeId && a.Date == date
+            && a.Source == AttendanceSources.AttendanceCorrection
+            && a.ReferenceId == ctx.RequestInstanceId, ct);
+        if (already)
+            return EffectExecutionResult.Skip("AlreadyApplied",
+                targetEntityType: "AttendanceRecord",
+                summary: $"Attendance for {date:yyyy-MM-dd} already corrected by this request.");
+
         var existing = await _db.AttendanceRecords
             .FirstOrDefaultAsync(a => a.EmployeeId == ctx.EmployeeId && a.Date == date, ct);
 
