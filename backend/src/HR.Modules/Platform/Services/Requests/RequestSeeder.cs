@@ -345,6 +345,8 @@ public sealed class RequestSeeder : IRequestSeeder
     {
         F("startDate", "التاريخ", "Date", FieldType.Date, true),
         F("reason", "السبب", "Reason", FieldType.TextArea, true),
+        F("checkIn", "وقت الحضور (HH:mm)", "Check In (HH:mm)", FieldType.Text, false, placeholder: "08:00"),
+        F("checkOut", "وقت الانصراف (HH:mm)", "Check Out (HH:mm)", FieldType.Text, false, placeholder: "17:00"),
     });
 
     private static FormSpec BusinessTripForm() => new("FORM_BUSINESS_TRIP", "نموذج رحلة عمل", "Business Trip Form", new()

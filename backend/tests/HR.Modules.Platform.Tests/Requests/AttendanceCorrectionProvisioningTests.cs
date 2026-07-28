@@ -1,4 +1,5 @@
 using FluentAssertions;
+using HR.Application.Engines.Completion;
 using HR.Domain.Enums;
 using HR.Modules.Platform.Services.Requests;
 using Xunit;
@@ -25,5 +26,13 @@ public class AttendanceCorrectionProvisioningTests
         rules.Where(r => r.Event != WorkflowNotificationEvent.StepAssigned)
              .Should().OnlyContain(r => r.Recipients.Single().Type == NotificationRecipientType.Requester);
         rules.Select(r => r.SystemKey).Should().OnlyHaveUniqueItems();
+    }
+
+    [Fact]
+    public void System_effect_maps_check_in_and_out()
+    {
+        var specs = SystemRequestEffects.Required["ATTENDANCE_CORRECTION"];
+        var correct = specs.Single(s => s.EffectType == EffectTypes.AttendanceCorrect);
+        correct.Inputs.Keys.Should().Contain(new[] { "date", "reason", "checkIn", "checkOut" });
     }
 }

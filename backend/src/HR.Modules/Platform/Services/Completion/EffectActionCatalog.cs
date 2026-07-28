@@ -89,8 +89,8 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
         {
             EffectType = EffectTypes.AttendanceCorrect,
             LabelAr = "تصحيح الحضور", LabelEn = "Correct attendance",
-            DescriptionAr = "يصحّح يوم حضور ويلغي التأخير والنقص.",
-            DescriptionEn = "Corrects an attendance day, clearing late and shortage minutes.",
+            DescriptionAr = "يعيد احتساب يوم الحضور من الأوقات المصححة.",
+            DescriptionEn = "Recomputes an attendance day from the corrected punches.",
             Module = "Attendance",
             SupportedTriggers = FinalOnly,
             ExecutionMode = EffectExecutionMode.Transactional,
@@ -98,6 +98,8 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
             {
                 In("date", "التاريخ", "Date", true, FieldOrContext),
                 In("reason", "السبب", "Reason", false, FieldContextOrConstant),
+                In("checkIn", "وقت الحضور", "Check In", false, FieldOrContext),
+                In("checkOut", "وقت الانصراف", "Check Out", false, FieldOrContext),
             },
             RequiredPermissions = new[] { "Attendance.Edit" },
         },

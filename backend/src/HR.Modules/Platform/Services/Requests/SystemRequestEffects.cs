@@ -71,7 +71,9 @@ public static class SystemRequestEffects
             {
                 Transactional(EffectTypes.AttendanceCorrect, Map(
                     ("date", Field("startDate")),
-                    ("reason", Field("reason")))),
+                    ("reason", Field("reason")),
+                    ("checkIn", Field("checkIn")),
+                    ("checkOut", Field("checkOut")))),
             },
 
             ["OVERTIME_REQUEST"] = new[]
