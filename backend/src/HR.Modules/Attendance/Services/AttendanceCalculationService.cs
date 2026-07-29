@@ -3,6 +3,9 @@ using HR.Domain.Enums;
 
 namespace HR.Modules.Attendance.Services;
 
+/// <summary>A permitted absence window on the shift day, in minutes-from-midnight.</summary>
+public readonly record struct PermissionWindow(int FromMinutes, int ToMinutes);
+
 /// <summary>Outcome of computing one employee/day. All durations are in minutes.</summary>
 public sealed class AttendanceCalcResult
 {
@@ -14,6 +17,7 @@ public sealed class AttendanceCalcResult
     public int OvertimeMinutes { get; set; }
     public int BreakMinutes { get; set; }
     public bool IsFlexible { get; set; }
+    public int ExcusedMinutes { get; set; }
 }
 
 /// <summary>Tenant attendance-policy values that tune the calculation (defaults when null).</summary>
@@ -31,7 +35,8 @@ public interface IAttendanceCalculationService
     AttendanceCalcResult Calculate(
         Shift? shift, DateTime date, DateTime? checkIn, DateTime? checkOut,
         bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false,
-        AttendancePolicySettings? policy = null);
+        AttendancePolicySettings? policy = null,
+        IReadOnlyList<PermissionWindow>? permissions = null);
 }
 
 public sealed class AttendanceCalculationService : IAttendanceCalculationService
@@ -48,7 +53,8 @@ public sealed class AttendanceCalculationService : IAttendanceCalculationService
     public AttendanceCalcResult Calculate(
         Shift? shift, DateTime date, DateTime? checkIn, DateTime? checkOut,
         bool isLeave = false, bool isHoliday = false, bool isWorkFromHome = false,
-        AttendancePolicySettings? policy = null)
+        AttendancePolicySettings? policy = null,
+        IReadOnlyList<PermissionWindow>? permissions = null)
     {
         var required = shift?.RequiredMinutes ?? DefaultRequiredMinutes;
         var breakMin = shift?.BreakMinutes ?? 0;
@@ -114,6 +120,16 @@ public sealed class AttendanceCalculationService : IAttendanceCalculationService
         if (overtimeAllowed)
             r.OvertimeMinutes = Math.Max(0, worked - required);
 
+        // Excuse late/early minutes covered by approved permission windows (fixed shifts only).
+        if (permissions is { Count: > 0 } && !flexible && shift is not null)
+        {
+            var (exLate, exShort, exTotal) = PermissionMath.Excuse(
+                shift, date, inT, outT, r.LateMinutes, r.ShortageMinutes, permissions);
+            r.LateMinutes -= exLate;
+            r.ShortageMinutes -= exShort;
+            r.ExcusedMinutes = exTotal;
+        }
+
         // Resolve a single headline status (minute fields stay populated regardless).
         if (isWorkFromHome) r.Status = AttendanceStatus.WorkFromHome;
         else if (r.LateMinutes > 0) r.Status = AttendanceStatus.Late;
@@ -131,4 +147,83 @@ public sealed class AttendanceCalculationService : IAttendanceCalculationService
         foreach (var part in csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             if (int.TryParse(part, out var d) && d is >= 0 and <= 6) yield return d;
     }
+}
+
+/// <summary>Pure minute math for attendance permissions (استئذان): overlap of permitted windows with
+/// the shift's absent intervals. All values are minutes-from-midnight on the shift date; overnight
+/// shifts and after-midnight windows are lifted over the +1440 boundary.</summary>
+public static class PermissionMath
+{
+    /// <summary>Excused (late, shortage, total) for one day. `total` = late-interval + early-interval
+    /// coverage (disjoint, so never double-counted); `late`/`shortage` are capped at the raw penalties.</summary>
+    public static (int excusedLate, int excusedShortage, int excusedTotal) Excuse(
+        Shift shift, DateTime date, DateTime inT, DateTime outT,
+        int rawLate, int rawShortage, IReadOnlyList<PermissionWindow> windows)
+    {
+        var (shiftStart, shiftEnd) = ShiftSpan(shift);
+
+        int inMin = (int)Math.Round((inT - date.Date).TotalMinutes);
+        int outMin = (int)Math.Round((outT - date.Date).TotalMinutes);
+        if (outMin < inMin) outMin += 1440; // overnight punch pair
+
+        // Absent-within-shift intervals: tardy [start, checkIn] and early-leave [checkOut, end].
+        int lateFrom = shiftStart, lateTo = Clamp(inMin, shiftStart, shiftEnd);
+        int earlyFrom = Clamp(outMin, shiftStart, shiftEnd), earlyTo = shiftEnd;
+
+        var merged = Merge(windows, shiftStart, shiftEnd);
+        int exLate = Math.Min(Overlap(merged, lateFrom, lateTo), rawLate);
+        int exEarly = Overlap(merged, earlyFrom, earlyTo);
+        int exShort = Math.Min(exLate + exEarly, rawShortage);
+        return (exLate, exShort, exLate + exEarly);
+    }
+
+    /// <summary>Total permitted minutes lying within the shift span — the cap-tally value, computed
+    /// without punches (works for permissions approved before the day happens). Falls back to raw
+    /// window length when no shift is resolved.</summary>
+    public static int WindowMinutesWithinShift(Shift? shift, IReadOnlyList<PermissionWindow> windows)
+    {
+        if (shift is null || shift.IsFlexible)
+            return windows.Sum(w => Math.Max(0, w.ToMinutes - w.FromMinutes));
+        var (shiftStart, shiftEnd) = ShiftSpan(shift);
+        var merged = Merge(windows, shiftStart, shiftEnd);
+        return merged.Sum(iv => iv.To - iv.From);
+    }
+
+    private static (int start, int end) ShiftSpan(Shift shift)
+    {
+        int start = (int)shift.StartTime.ToTimeSpan().TotalMinutes;
+        int end = (int)shift.EndTime.ToTimeSpan().TotalMinutes;
+        if (end <= start) end += 1440;
+        return (start, end);
+    }
+
+    private static List<(int From, int To)> Merge(IReadOnlyList<PermissionWindow> ws, int shiftStart, int shiftEnd)
+    {
+        var list = new List<(int, int)>();
+        foreach (var w in ws)
+        {
+            int f = w.FromMinutes, t = w.ToMinutes;
+            if (t <= f) continue;
+            if (f < shiftStart) { f += 1440; t += 1440; } // after-midnight window on an overnight shift
+            f = Math.Max(f, shiftStart); t = Math.Min(t, shiftEnd);
+            if (t > f) list.Add((f, t));
+        }
+        list.Sort((a, b) => a.Item1.CompareTo(b.Item1));
+        var merged = new List<(int From, int To)>();
+        foreach (var iv in list)
+            if (merged.Count > 0 && iv.Item1 <= merged[^1].To)
+                merged[^1] = (merged[^1].From, Math.Max(merged[^1].To, iv.Item2));
+            else merged.Add(iv);
+        return merged;
+    }
+
+    private static int Overlap(List<(int From, int To)> merged, int from, int to)
+    {
+        if (to <= from) return 0;
+        int sum = 0;
+        foreach (var iv in merged) sum += Math.Max(0, Math.Min(iv.To, to) - Math.Max(iv.From, from));
+        return sum;
+    }
+
+    private static int Clamp(int v, int lo, int hi) => Math.Max(lo, Math.Min(v, hi));
 }
