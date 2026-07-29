@@ -1,5 +1,6 @@
 using HR.Application.Common.Exceptions;
 using HR.Application.Engines.Audit;
+using HR.Application.Engines.Timeline;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Employees.DTOs;
 using HR.Modules.Employees.Entities;
@@ -13,11 +14,14 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
 {
     private readonly ApplicationDbContext _context;
     private readonly IAuditEngine _audit;
+    private readonly ITimelineProjectionService _projection;
 
-    public UpdateEmployeeCommandHandler(ApplicationDbContext context, IAuditEngine audit)
+    public UpdateEmployeeCommandHandler(ApplicationDbContext context, IAuditEngine audit,
+        ITimelineProjectionService projection)
     {
         _context = context;
         _audit = audit;
+        _projection = projection;
     }
 
     public async Task<EmployeeDto> Handle(UpdateEmployeeCommand request, CancellationToken cancellationToken)
@@ -74,10 +78,16 @@ public class UpdateEmployeeCommandHandler : IRequestHandler<UpdateEmployeeComman
 
         await _context.SaveChangesAsync(cancellationToken);
 
-        await _audit.LogChange("Employee", employee.Id, "Updated",
-            before, new { employee.FirstName, employee.LastName, employee.Email, employee.Status,
-                employee.BasicSalary, employee.DepartmentId, employee.BranchId, employee.ManagerId },
-            cancellationToken);
+        var after = new
+        {
+            employee.FirstName, employee.LastName, employee.Email, employee.Status,
+            employee.BasicSalary, employee.DepartmentId, employee.BranchId, employee.ManagerId,
+        };
+
+        await _audit.LogChange("Employee", employee.Id, "Updated", before, after, cancellationToken);
+
+        // Project the same before/after diff into categorized journey timeline events (Feature 4).
+        await _projection.ProjectEmployeeChangeAsync(employee.Id, before, after, actorId: null, cancellationToken);
 
         var result = await EmployeeProjection.MapAsync(
             _context.Employees.Where(e => e.Id == employee.Id), _context, cancellationToken);
