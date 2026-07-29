@@ -80,4 +80,16 @@ public class AttendancePermissionCalcTests
         Assert.True(r.ShortageMinutes > 0);
         Assert.Equal(0, r.ExcusedMinutes);
     }
+
+    [Fact] // Regression: daytime shift 08:00-16:00. Permission starts BEFORE shift (07:00-09:00).
+    // Only the in-shift portion 08:00-09:00 (60 min) should excuse the late arrival; pre-shift 07:00-08:00 is ignored.
+    // Before the fix: window f=420 < shiftStart=480 triggers unconditional lift → f=1860, clamped out, window dropped → LateMinutes stays 60.
+    public void Daytime_permission_starting_before_shift_excuses_only_in_shift_portion()
+    {
+        var shift = FixedShift(new(8, 0), new(16, 0), 480);
+        // Employee arrived 09:00 (60 min late), left 16:00 on time. Permission 07:00-09:00.
+        var r = _calc.Calculate(shift, Day, At(9, 0), At(16, 0), permissions: new[] { W(7, 0, 9, 0) });
+        Assert.Equal(0, r.LateMinutes);
+        Assert.Equal(60, r.ExcusedMinutes); // only the 08:00-09:00 portion
+    }
 }

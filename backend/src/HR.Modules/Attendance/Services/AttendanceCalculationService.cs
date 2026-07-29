@@ -204,7 +204,7 @@ public static class PermissionMath
         {
             int f = w.FromMinutes, t = w.ToMinutes;
             if (t <= f) continue;
-            if (f < shiftStart) { f += 1440; t += 1440; } // after-midnight window on an overnight shift
+            if (f < shiftStart && shiftEnd > 1440) { f += 1440; t += 1440; } // after-midnight window on an overnight shift
             f = Math.Max(f, shiftStart); t = Math.Min(t, shiftEnd);
             if (t > f) list.Add((f, t));
         }
