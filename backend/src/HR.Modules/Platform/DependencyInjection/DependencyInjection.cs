@@ -34,6 +34,7 @@ public static class DependencyInjection
         services.AddScoped<IAutomationEngine, AutomationEngine>();
         services.AddScoped<IAuditEngine, AuditEngine>();
         services.AddScoped<ITimelineEngine, TimelineEngine>();
+        services.AddScoped<ITimelineProjectionService, TimelineProjectionService>();
         services.AddScoped<ITokenResolver, TokenResolver>();
         services.AddScoped<IEndOfServiceEngine, EndOfServiceEngine>();
         services.AddScoped<ILeaveAccrualEngine, LeaveAccrualEngine>();
