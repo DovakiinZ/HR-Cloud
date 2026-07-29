@@ -2,6 +2,8 @@ using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Common.Paging;
+using HR.Domain.Engines.Timeline;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
 using HR.Modules.Platform.Services.Completion;
@@ -340,21 +342,71 @@ public class RequestsController : BaseApiController
         return OkResponse(list);
     }
 
-    /// <summary>An employee's activity timeline (no extra permission — used by the profile).</summary>
+    /// <summary>An employee's activity timeline (no extra permission — used by the profile).
+    /// Supports category filter, free-text search, and server-side paging. Compensation before/after
+    /// values are masked unless the caller has <c>Employees.ViewSensitive</c>.</summary>
     [HttpGet("by-employee/{employeeId:guid}/timeline")]
-    public async Task<ActionResult<ApiResponse<List<EmployeeTimelineDto>>>> EmployeeTimeline(Guid employeeId, CancellationToken ct)
+    public async Task<ActionResult<ApiResponse<PagedResult<EmployeeTimelineDto>>>> EmployeeTimeline(
+        Guid employeeId, [FromQuery] string? category, [FromQuery] string? search,
+        [FromQuery] int page = 1, [FromQuery] int pageSize = 20, CancellationToken ct = default)
     {
-        var events = await _db.TimelineEvents
-            .Where(t => t.EntityType == "Employee" && t.EntityId == employeeId)
-            .OrderByDescending(t => t.OccurredAt).Take(50)
-            .Select(t => new EmployeeTimelineDto
-            {
-                Id = t.Id, Category = t.Category, Action = t.Action,
-                DescriptionAr = t.DescriptionAr, DescriptionEn = t.DescriptionEn,
-                ActorName = t.ActorName, OccurredAt = t.OccurredAt,
-            }).ToListAsync(ct);
-        return OkResponse(events);
+        if (page < 1) page = 1;
+        pageSize = Math.Clamp(pageSize, 1, 200);
+
+        var q = _db.TimelineEvents.Where(t => t.EntityType == "Employee" && t.EntityId == employeeId);
+        if (!string.IsNullOrWhiteSpace(category))
+            q = q.Where(t => t.Category == category);
+        if (!string.IsNullOrWhiteSpace(search))
+            q = q.Where(t => (t.DescriptionAr ?? "").Contains(search)
+                || (t.DescriptionEn ?? "").Contains(search) || t.Action.Contains(search));
+
+        var total = await q.CountAsync(ct);
+        var rows = await q.OrderByDescending(t => t.OccurredAt)
+            .Skip((page - 1) * pageSize).Take(pageSize).ToListAsync(ct);
+
+        var canSeeSensitive = _user.Permissions.Contains("Employees.ViewSensitive");
+        var items = rows.Select(t => ToTimelineDto(t, employeeId, canSeeSensitive)).ToList();
+
+        return OkResponse(new PagedResult<EmployeeTimelineDto>(items, page, pageSize, total));
     }
+
+    private static EmployeeTimelineDto ToTimelineDto(TimelineEvent t, Guid employeeId, bool canSeeSensitive)
+    {
+        string? before = null, after = null;
+        // Only surface before/after when it's not sensitive compensation, or the caller is authorized.
+        if (!string.IsNullOrEmpty(t.Metadata)
+            && (t.Category != nameof(TimelineCategory.Compensation) || canSeeSensitive))
+        {
+            try
+            {
+                using var doc = System.Text.Json.JsonDocument.Parse(t.Metadata);
+                if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object)
+                {
+                    if (doc.RootElement.TryGetProperty("before", out var b)) before = b.ToString();
+                    if (doc.RootElement.TryGetProperty("after", out var a)) after = a.ToString();
+                }
+            }
+            catch (System.Text.Json.JsonException) { /* malformed metadata → leave nulls */ }
+        }
+
+        return new EmployeeTimelineDto
+        {
+            Id = t.Id, Category = t.Category, Action = t.Action,
+            DescriptionAr = t.DescriptionAr, DescriptionEn = t.DescriptionEn,
+            ActorName = t.ActorName, OccurredAt = t.OccurredAt,
+            EntityType = t.EntityType, EntityId = t.EntityId,
+            Metadata = t.Metadata, Before = before, After = after,
+            SourceLink = SourceLinkFor(t.Category, employeeId),
+        };
+    }
+
+    private static string SourceLinkFor(string category, Guid employeeId) => category switch
+    {
+        nameof(TimelineCategory.Document) => $"/employees/{employeeId}?tab=documents",
+        nameof(TimelineCategory.Leave) => $"/employees/{employeeId}?tab=leave",
+        nameof(TimelineCategory.Payroll) => "/payroll",
+        _ => $"/employees/{employeeId}",
+    };
 
     /// <summary>Approved leave records (the Leaves page). scope=all (with permission) → everyone.</summary>
     [HttpGet("leaves")]
@@ -767,4 +819,10 @@ public sealed class EmployeeTimelineDto
     public string? DescriptionEn { get; set; }
     public string? ActorName { get; set; }
     public DateTime OccurredAt { get; set; }
+    public string EntityType { get; set; } = null!;
+    public Guid EntityId { get; set; }
+    public string? SourceLink { get; set; }
+    public string? Metadata { get; set; }
+    public string? Before { get; set; }
+    public string? After { get; set; }
 }
