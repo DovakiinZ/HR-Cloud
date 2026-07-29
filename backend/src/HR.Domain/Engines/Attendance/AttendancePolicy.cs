@@ -1,4 +1,5 @@
 using HR.Domain.Common;
+using HR.Domain.Enums;
 
 namespace HR.Domain.Engines.Attendance;
 
@@ -20,6 +21,14 @@ public class AttendancePolicy : TenantEntity
 
     /// <summary>Count overtime only when the shift allows it.</summary>
     public bool CountOvertime { get; set; } = true;
+
+    // ── Attendance-permission (استئذان) monthly cap. Null = unlimited. ──
+    /// <summary>Max approved permissions per employee per calendar month (null = unlimited).</summary>
+    public int? PermissionMaxPerMonth { get; set; }
+    /// <summary>Max excused permission minutes per employee per calendar month (null = unlimited).</summary>
+    public int? PermissionMaxMinutesPerMonth { get; set; }
+    /// <summary>Block rejects an over-cap permission at approval; Warn only flags it.</summary>
+    public PermissionCapMode PermissionCapMode { get; set; } = PermissionCapMode.Warn;
 
     public bool IsDefault { get; set; } = true;
     public bool IsActive { get; set; } = true;
