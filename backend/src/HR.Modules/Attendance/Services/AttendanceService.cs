@@ -81,6 +81,14 @@ public sealed class AttendanceService : IAttendanceService
         var holidays = await LoadHolidayDatesAsync(from, to, ct);
         var policy = await LoadPolicyAsync(ct);
 
+        var permissions = await _db.AttendancePermissions.AsNoTracking()
+            .Where(p => p.Date >= from && p.Date <= to && empIds.Contains(p.EmployeeId))
+            .ToListAsync(ct);
+        var permByKey = permissions
+            .GroupBy(p => (p.EmployeeId, p.Date.Date))
+            .ToDictionary(g => g.Key, g => (IReadOnlyList<PermissionWindow>)g
+                .Select(p => new PermissionWindow(p.FromMinutes, p.ToMinutes)).ToList());
+
         var rows = new List<AttendanceDayDto>();
         for (var d = from; d <= to; d = d.AddDays(1))
         {
@@ -90,7 +98,8 @@ public sealed class AttendanceService : IAttendanceService
                 if (filter.ShiftId is { } sid && shift?.Id != sid) continue;
 
                 recByKey.TryGetValue((e.Id, d), out var rec);
-                var dto = BuildDay(e, d, shift, rec, today, holidays.Contains(d.Date), policy);
+                permByKey.TryGetValue((e.Id, d), out var pw);
+                var dto = BuildDay(e, d, shift, rec, today, holidays.Contains(d.Date), policy, pw ?? Array.Empty<PermissionWindow>());
 
                 if (filter.Status is { Length: > 0 } st && !string.Equals(dto.Status, st, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -102,7 +111,7 @@ public sealed class AttendanceService : IAttendanceService
     }
 
     private AttendanceDayDto BuildDay(EmpRow e, DateTime date, Shift? shift, AttendanceRecord? rec, DateTime today,
-        bool isHolidayDate, AttendancePolicySettings policy)
+        bool isHolidayDate, AttendancePolicySettings policy, IReadOnlyList<PermissionWindow>? permissions = null)
     {
         var isLeave = rec is not null && (rec.Status == AttendanceStatus.OnLeave || rec.Source == AttendanceSources.LeaveRequest);
         var isHoliday = isHolidayDate || (rec is not null && rec.Status == AttendanceStatus.Holiday);
@@ -111,7 +120,7 @@ public sealed class AttendanceService : IAttendanceService
         var ci = isLeave ? null : rec?.CheckIn;
         var co = isLeave ? null : rec?.CheckOut;
 
-        var calc = _calc.Calculate(shift, date, ci, co, isLeave, isHoliday, isWfh, policy);
+        var calc = _calc.Calculate(shift, date, ci, co, isLeave, isHoliday, isWfh, policy, permissions);
         var statusStr = calc.Status.ToString();
 
         // Don't penalise future working days, or — when the policy disables auto-absent — past days with
@@ -144,6 +153,7 @@ public sealed class AttendanceService : IAttendanceService
             ShortageMinutes = calc.ShortageMinutes,
             OvertimeMinutes = calc.OvertimeMinutes,
             BreakMinutes = calc.BreakMinutes,
+            ExcusedMinutes = calc.ExcusedMinutes,
             Status = statusStr,
             Source = rec?.Source,
             ReferenceId = rec?.ReferenceId,
@@ -198,7 +208,8 @@ public sealed class AttendanceService : IAttendanceService
 
         var policy = await LoadPolicyAsync(ct);
         var isHolidayDate = (await LoadHolidayDatesAsync(rec.Date, rec.Date, ct)).Contains(rec.Date.Date);
-        var day = BuildDay(e, rec.Date, shift, rec, DateTime.UtcNow.Date, isHolidayDate, policy);
+        var perms = await LoadPermissionWindowsAsync(rec.EmployeeId, rec.Date, ct);
+        var day = BuildDay(e, rec.Date, shift, rec, DateTime.UtcNow.Date, isHolidayDate, policy, perms);
 
         var punches = await _db.AttendancePunches.AsNoTracking()
             .Where(p => p.EmployeeId == rec.EmployeeId && p.PunchTime >= rec.Date && p.PunchTime < rec.Date.AddDays(1))
@@ -296,8 +307,9 @@ public sealed class AttendanceService : IAttendanceService
         var isLeave = rec.Status == AttendanceStatus.OnLeave || rec.Source == AttendanceSources.LeaveRequest;
         var policy = await LoadPolicyAsync(ct);
         var isHolidayDate = (await LoadHolidayDatesAsync(rec.Date, rec.Date, ct)).Contains(rec.Date.Date);
+        var windows = await LoadPermissionWindowsAsync(rec.EmployeeId, rec.Date, ct);
         var calc = _calc.Calculate(shift, rec.Date, isLeave ? null : rec.CheckIn, isLeave ? null : rec.CheckOut,
-            isLeave, rec.Status == AttendanceStatus.Holiday || isHolidayDate, false, policy);
+            isLeave, rec.Status == AttendanceStatus.Holiday || isHolidayDate, false, policy, windows);
 
         rec.ShiftId = shift?.Id;
         rec.IsFlexible = calc.IsFlexible;
@@ -307,6 +319,7 @@ public sealed class AttendanceService : IAttendanceService
         rec.ShortageMinutes = calc.ShortageMinutes;
         rec.OvertimeMinutes = calc.OvertimeMinutes;
         rec.BreakMinutes = calc.BreakMinutes;
+        rec.ExcusedMinutes = calc.ExcusedMinutes;
         if (!isLeave) rec.Status = calc.Status;
     }
 
@@ -362,6 +375,16 @@ public sealed class AttendanceService : IAttendanceService
         return p is null
             ? new AttendancePolicySettings(0, 0, true, true)
             : new AttendancePolicySettings(p.DefaultGraceMinutes, p.RoundingMinutes, p.CountOvertime, p.AutoMarkAbsent);
+    }
+
+    /// <summary>Approved permission windows for one employee/day, as minutes-from-midnight.</summary>
+    private async Task<List<PermissionWindow>> LoadPermissionWindowsAsync(Guid employeeId, DateTime date, CancellationToken ct)
+    {
+        var d = date.Date;
+        return await _db.AttendancePermissions.AsNoTracking()
+            .Where(p => p.EmployeeId == employeeId && p.Date == d)
+            .Select(p => new PermissionWindow(p.FromMinutes, p.ToMinutes))
+            .ToListAsync(ct);
     }
 
     private void AddAudit(AttendanceRecord rec, string action, string ar, string en)

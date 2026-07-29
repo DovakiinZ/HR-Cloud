@@ -26,6 +26,7 @@ public sealed class AttendanceDayDto
     public int ShortageMinutes { get; set; }
     public int OvertimeMinutes { get; set; }
     public int BreakMinutes { get; set; }
+    public int ExcusedMinutes { get; set; }
 
     public string Status { get; set; } = null!;
     public string? Source { get; set; }
