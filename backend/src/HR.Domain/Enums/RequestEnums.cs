@@ -54,3 +54,6 @@ public enum PunchDirection
     In = 1,
     Out = 2,
 }
+
+/// <summary>How the monthly attendance-permission cap is enforced.</summary>
+public enum PermissionCapMode { Warn = 0, Block = 1 }
