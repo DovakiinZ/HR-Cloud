@@ -28,6 +28,7 @@ public class AttendanceRecord : TenantEntity
     public int ShortageMinutes { get; set; }
     public int OvertimeMinutes { get; set; }
     public int BreakMinutes { get; set; }
+    public int ExcusedMinutes { get; set; }
 
     /// <summary>True when the resolved shift is flexible (only total hours matter).</summary>
     public bool IsFlexible { get; set; }
@@ -52,4 +53,5 @@ public static class AttendanceSources
     public const string LeaveRequest = "LeaveRequest";
     public const string MissingPunchRequest = "MissingPunch";
     public const string AttendanceCorrection = "AttendanceCorrection";
+    public const string AttendancePermission = "AttendancePermission";
 }

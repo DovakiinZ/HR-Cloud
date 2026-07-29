@@ -232,6 +232,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
     public DbSet<HR.Domain.Engines.Attendance.ShiftAssignment> ShiftAssignments => Set<HR.Domain.Engines.Attendance.ShiftAssignment>();
     public DbSet<HR.Domain.Engines.Attendance.AttendancePunch> AttendancePunches => Set<HR.Domain.Engines.Attendance.AttendancePunch>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceCorrection> AttendanceCorrections => Set<HR.Domain.Engines.Attendance.AttendanceCorrection>();
+    public DbSet<HR.Domain.Engines.Attendance.AttendancePermission> AttendancePermissions => Set<HR.Domain.Engines.Attendance.AttendancePermission>();
     public DbSet<HR.Domain.Engines.Attendance.AttendancePolicy> AttendancePolicies => Set<HR.Domain.Engines.Attendance.AttendancePolicy>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceHoliday> AttendanceHolidays => Set<HR.Domain.Engines.Attendance.AttendanceHoliday>();
     public DbSet<HR.Domain.Engines.Attendance.AttendanceAuditLog> AttendanceAuditLogs => Set<HR.Domain.Engines.Attendance.AttendanceAuditLog>();
