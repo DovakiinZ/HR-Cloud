@@ -24,6 +24,11 @@ public class AttendancePermission : TenantEntity
     /// <summary>The request instance that produced this row (idempotency + audit link).</summary>
     public Guid RequestInstanceId { get; set; }
 
+    /// <summary>The permission type (AttendancePermissionType MasterDataItem) this row belongs to.
+    /// Nullable: legacy rows and rows created before the executor stamps the id remain null.
+    /// Do NOT backfill. Per-type usage queries filter on this column; null rows match no specific type.</summary>
+    public Guid? PermissionTypeId { get; set; }
+
     /// <summary>Always <see cref="AttendanceSources.AttendancePermission"/>.</summary>
     public string? Source { get; set; }
 

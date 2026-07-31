@@ -30,6 +30,20 @@ public class AttendancePolicy : TenantEntity
     /// <summary>Block rejects an over-cap permission at approval; Warn only flags it.</summary>
     public PermissionCapMode PermissionCapMode { get; set; } = PermissionCapMode.Warn;
 
+    // ── Unpaid-permission deduction configuration ──────────────────────────
+    /// <summary>How the daily-wage divisor is computed for unpaid-permission deductions.
+    /// Fixed30 (default) → divide by 30; CalendarMonth → actual days; WorkingDays → non-weekend days.</summary>
+    public DayBasis UnpaidDivisorBasis { get; set; } = DayBasis.Fixed30;
+
+    /// <summary>Standard paid hours per work day (default 8). Used to convert the daily wage to an
+    /// hourly rate for the unpaid-permission deduction.</summary>
+    public decimal UnpaidDailyPayableHours { get; set; } = 8m;
+
+    /// <summary>Comma-separated AllowanceType Codes whose active employee allowance amounts are
+    /// added to BasicSalary when computing the wage base for unpaid-permission deductions.
+    /// Null / empty ⇒ basic salary only.</summary>
+    public string? UnpaidWageComponentCodes { get; set; }
+
     public bool IsDefault { get; set; } = true;
     public bool IsActive { get; set; } = true;
 }

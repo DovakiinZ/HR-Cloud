@@ -12,6 +12,8 @@ public static class DependencyInjection
         services.AddScoped<IAttendanceCalculationService, AttendanceCalculationService>();
         services.AddScoped<IShiftResolver, ShiftResolver>();
         services.AddScoped<IAttendanceService, AttendanceService>();
+        services.AddScoped<IAttendancePermissionTypeService, AttendancePermissionTypeService>();
+        services.AddScoped<IUnpaidPermissionWageResolver, UnpaidPermissionWageResolver>();
         // Completion effects this module owns (ApplyLeaveDays, CreatePunch, Correct).
         services.AddEffectExecutorsFromAssembly(Assembly.GetExecutingAssembly());
         return services;
