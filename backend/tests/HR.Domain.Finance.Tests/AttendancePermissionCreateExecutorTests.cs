@@ -2,6 +2,7 @@ using System.Text.Json;
 using HR.Application.Common.Interfaces;
 using HR.Application.Engines.Attendance;
 using HR.Application.Engines.Completion;
+using HR.Application.Engines.Finance;
 using HR.Application.Engines.Scope;
 using HR.Domain.Engines.Attendance;
 using HR.Domain.Engines.MasterData;
@@ -44,10 +45,18 @@ public class AttendancePermissionCreateExecutorTests
 
     private static DateTime Utc(int y, int m, int d) => new(y, m, d, 0, 0, 0, DateTimeKind.Utc);
 
+    /// <summary>No-throw period guard — existing tests don't need payroll-period behavior.</summary>
+    private sealed class OpenPeriodGuard : IPayrollPeriodGuard
+    {
+        public Task EnsurePeriodOpenForAsync(Guid employeeId, DateTime effectiveDate, CancellationToken ct = default)
+            => Task.CompletedTask;
+    }
+
     private static AttendancePermissionCreateExecutor Executor(ApplicationDbContext db)
     {
         var types = new AttendancePermissionTypeService(db, new AlwaysEligibleScopeEngine());
-        return new(db, new ShiftResolver(), types);
+        var resolver = new UnpaidPermissionWageResolver(db);
+        return new(db, new ShiftResolver(), types, resolver, new OpenPeriodGuard());
     }
 
     /// <summary>Seed an Active employee assigned a fixed 08:00–16:00 day shift; returns the employee id.</summary>
