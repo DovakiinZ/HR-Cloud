@@ -70,6 +70,8 @@ public sealed class RequestSeeder : IRequestSeeder
             LoanForm(), Impact(loans: true, createsLoan: true, finance: true), "HandCoins", "#A78BFA", ct);
         created += await EnsureRequest("ATTENDANCE_CORRECTION", "تصحيح حضور", "Attendance Correction", catTimeOff, null, wfManager, null,
             AttendanceCorrectionForm(), Impact(attendance: true), "Clock", "#22D3EE", ct);
+        created += await EnsureRequest("ATTENDANCE_PERMISSION", "استئذان", "Attendance Permission", catTimeOff, null, wfManager, null,
+            AttendancePermissionForm(), Impact(attendance: true), "UserCheck", "#F59E0B", ct);
         created += await EnsureRequest("BUSINESS_TRIP", "رحلة عمل", "Business Trip", catHr, null, wfMgrDeptHr, null,
             BusinessTripForm(), Impact(document: false), "Briefcase", "#94A3B8", ct);
         created += await EnsureRequest("EXPENSE_CLAIM", "مطالبة مصروف", "Expense Claim", catFinance, null, wfMgrFin, null,
@@ -349,6 +351,16 @@ public sealed class RequestSeeder : IRequestSeeder
         F("checkOut", "وقت الانصراف (HH:mm)", "Check Out (HH:mm)", FieldType.Text, false, placeholder: "17:00"),
     });
 
+    private static FormSpec AttendancePermissionForm() => new("FORM_ATTENDANCE_PERMISSION", "نموذج استئذان", "Attendance Permission Form", new()
+    {
+        F("permissionType", "نوع الاستئذان", "Permission Type", FieldType.Dropdown, true, options: Lookup(MasterDataObjectType.AttendancePermissionType)),
+        F("date", "التاريخ", "Date", FieldType.Date, true),
+        F("fromTime", "من الساعة (HH:mm)", "From Time (HH:mm)", FieldType.Text, true, placeholder: "08:00"),
+        F("toTime", "إلى الساعة (HH:mm)", "To Time (HH:mm)", FieldType.Text, true, placeholder: "09:00"),
+        F("reason", "السبب", "Reason", FieldType.TextArea, false),
+        F("overrideReason", "سبب تجاوز الحد", "Override Reason", FieldType.TextArea, false),
+    });
+
     private static FormSpec BusinessTripForm() => new("FORM_BUSINESS_TRIP", "نموذج رحلة عمل", "Business Trip Form", new()
     {
         F("destination", "الوجهة", "Destination", FieldType.Text, true),
@@ -477,6 +489,7 @@ public sealed class RequestSeeder : IRequestSeeder
             ["SALARY_ADVANCE"]         = () => AmountForm("FORM_SALARY_ADVANCE", "نموذج سلفة راتب", "Salary Advance Form"),
             ["LOAN_REQUEST"]           = LoanForm,
             ["ATTENDANCE_CORRECTION"]  = AttendanceCorrectionForm,
+            ["ATTENDANCE_PERMISSION"]  = AttendancePermissionForm,
             ["BUSINESS_TRIP"]          = BusinessTripForm,
             ["EXPENSE_CLAIM"]          = ExpenseForm,
             ["EMPLOYEE_DATA_UPDATE"]   = DataUpdateForm,

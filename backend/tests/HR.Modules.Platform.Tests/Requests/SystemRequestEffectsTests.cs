@@ -57,10 +57,55 @@ public class SystemRequestEffectsTests
         {
             EffectTypes.LeaveCreateApprovedLeave, EffectTypes.AttendanceApplyLeaveDays,
             EffectTypes.AttendanceCreatePunch, EffectTypes.AttendanceCorrect,
+            EffectTypes.AttendanceCreatePermission,
             EffectTypes.ExpenseCreateClaim, EffectTypes.LoanCreate, EffectTypes.AssetsAssignCustody,
             EffectTypes.NotificationSend, EffectTypes.TaskCreate,
         };
         var used = SystemRequestEffects.Required.Values.SelectMany(v => v).Select(e => e.EffectType);
         used.Should().OnlyContain(t => known.Contains(t));
+    }
+
+    // ─── ATTENDANCE_PERMISSION ────────────────────────────────────────────────
+
+    [Fact]
+    public void Attendance_permission_is_declared_in_required_effects()
+    {
+        SystemRequestEffects.Required.Should().ContainKey("ATTENDANCE_PERMISSION",
+            because: "the ATTENDANCE_PERMISSION system request type must have a required effect");
+    }
+
+    [Fact]
+    public void Attendance_permission_maps_to_create_permission_effect()
+    {
+        var spec = SystemRequestEffects.Required["ATTENDANCE_PERMISSION"]
+            .Single(s => s.EffectType == EffectTypes.AttendanceCreatePermission);
+
+        spec.Trigger.Should().Be(EffectTrigger.FinalApproval,
+            because: "the permission row must be created on final approval");
+        spec.ExecutionMode.Should().Be(EffectExecutionMode.Transactional,
+            because: "the permission row must be written in the same transaction as the approval");
+    }
+
+    [Fact]
+    public void Attendance_permission_effect_maps_all_six_form_inputs()
+    {
+        var spec = SystemRequestEffects.Required["ATTENDANCE_PERMISSION"]
+            .Single(s => s.EffectType == EffectTypes.AttendanceCreatePermission);
+
+        var expectedKeys = new[] { "permissionTypeId", "date", "fromTime", "toTime", "reason", "overrideReason" };
+        spec.Inputs.Keys.Should().Contain(expectedKeys,
+            because: "the executor reads all six keys from the effect payload");
+
+        // The lookup value is stored under "permissionType" in the form; the effect key is "permissionTypeId".
+        spec.Inputs["permissionTypeId"].Source.Should().Be(EffectValueSource.FormField);
+        spec.Inputs["permissionTypeId"].Key.Should().Be("permissionType");
+
+        foreach (var key in new[] { "date", "fromTime", "toTime", "reason", "overrideReason" })
+        {
+            spec.Inputs[key].Source.Should().Be(EffectValueSource.FormField,
+                because: $"'{key}' is sourced directly from the submitted form");
+            spec.Inputs[key].Key.Should().Be(key,
+                because: $"the form field code and the effect input key are identical for '{key}'");
+        }
     }
 }

@@ -114,10 +114,12 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
             ExecutionMode = EffectExecutionMode.Transactional,
             Inputs = new[]
             {
+                In("permissionTypeId", "نوع الاستئذان", "Permission type", true, FieldOrContext),
                 In("date", "التاريخ", "Date", true, FieldOrContext),
                 In("fromTime", "من الساعة", "From time", true, FieldOrContext),
                 In("toTime", "إلى الساعة", "To time", true, FieldOrContext),
                 In("reason", "السبب", "Reason", false, FieldContextOrConstant),
+                In("overrideReason", "سبب تجاوز الحد", "Override reason", false, FieldContextOrConstant),
             },
             RequiredPermissions = new[] { "Attendance.Edit" },
         },

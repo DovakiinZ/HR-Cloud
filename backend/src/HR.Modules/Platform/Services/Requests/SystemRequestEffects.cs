@@ -76,6 +76,20 @@ public static class SystemRequestEffects
                     ("checkOut", Field("checkOut")))),
             },
 
+            // Attendance permission (استئذان): records an approved time-window excuse row,
+            // enforces per-type and policy monthly caps, and creates an unpaid deduction when
+            // the selected permission type is not paid. All six inputs map directly from form fields.
+            ["ATTENDANCE_PERMISSION"] = new[]
+            {
+                Transactional(EffectTypes.AttendanceCreatePermission, Map(
+                    ("permissionTypeId", Field("permissionType")),
+                    ("date",             Field("date")),
+                    ("fromTime",         Field("fromTime")),
+                    ("toTime",           Field("toTime")),
+                    ("reason",           Field("reason")),
+                    ("overrideReason",   Field("overrideReason")))),
+            },
+
             ["OVERTIME_REQUEST"] = new[]
             {
                 Transactional(EffectTypes.AttendanceCorrect, Map(
