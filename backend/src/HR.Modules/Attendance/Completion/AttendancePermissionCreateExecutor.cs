@@ -163,41 +163,49 @@ public sealed class AttendancePermissionCreateExecutor : IEffectExecutor
 
                 if (periodClosed)
                 {
-                    // Emit a payroll-adjustment notification; do NOT create the transaction.
-                    var hoursStr = $"{excused / 60m:0.##}";
-                    // We cannot know the exact amount without resolving the wage, but we compute it
-                    // for the notification body.
-                    var (wagePreview, divisorPreview, hoursPreview) =
-                        await _wageResolver.ResolveAsync(ctx.EmployeeId, date, ct);
-                    var amountPreview = UnpaidPermissionDeduction.Amount(wagePreview, excused, divisorPreview, hoursPreview);
-
-                    _db.Notifications.Add(new Notification
+                    // Emit a payroll-adjustment notification only when the actor is known;
+                    // mirror AttendanceCorrectionExecutor — no Guid.Empty fallback.
+                    if (ctx.ActorUserId is { } signalUser)
                     {
-                        UserId = ctx.ActorUserId ?? Guid.Empty,
-                        TitleAr = "خصم استئذان غير مدفوع — فترة رواتب مقفلة",
-                        TitleEn = "Unpaid Permission Deduction — Payroll Period Finalized",
-                        BodyAr = $"تمت إضافة استئذان غير مدفوع ({hoursStr} ساعة، {amountPreview} ريال) للموظف في تاريخ {date:yyyy-MM-dd}، لكن فترة الرواتب مقفلة. يلزم تسوية يدوية في الرواتب.",
-                        BodyEn = $"An unpaid permission ({hoursStr}h, {amountPreview:0.##} SAR) was recorded for {date:yyyy-MM-dd} but the payroll period is finalized. A manual payroll adjustment is required.",
-                        Category = "PayrollAdjustmentNeeded",
-                        Link = "/payroll",
-                        IsRead = false,
-                        EntityId = row.Id,
-                    });
+                        var hoursStr = $"{excused / 60m:0.##}";
+                        // Resolve the wage amount only inside the emit block.
+                        var (wagePreview, divisorPreview, hoursPreview) =
+                            await _wageResolver.ResolveAsync(ctx.EmployeeId, date, ct);
+                        var amountPreview = UnpaidPermissionDeduction.Amount(wagePreview, excused, divisorPreview, hoursPreview);
+
+                        _db.Notifications.Add(new Notification
+                        {
+                            UserId = signalUser,
+                            TitleAr = "خصم استئذان غير مدفوع — فترة رواتب مقفلة",
+                            TitleEn = "Unpaid Permission Deduction — Payroll Period Finalized",
+                            BodyAr = $"تمت إضافة استئذان غير مدفوع ({hoursStr} ساعة، {amountPreview} ريال) للموظف في تاريخ {date:yyyy-MM-dd}، لكن فترة الرواتب مقفلة. يلزم تسوية يدوية في الرواتب.",
+                            BodyEn = $"An unpaid permission ({hoursStr}h, {amountPreview:0.##} SAR) was recorded for {date:yyyy-MM-dd} but the payroll period is finalized. A manual payroll adjustment is required.",
+                            Category = "PayrollAdjustmentNeeded",
+                            Link = "/payroll",
+                            IsRead = false,
+                            EntityId = row.Id,
+                        });
+                    }
                     payrollAdjustmentFlagged = true;
                 }
                 else
                 {
-                    // Resolve wage and create born-Approved PayrollTransaction.
-                    var (monthlyWage, divisorDays, dailyHours) =
-                        await _wageResolver.ResolveAsync(ctx.EmployeeId, date, ct);
-                    var amount = UnpaidPermissionDeduction.Amount(monthlyWage, excused, divisorDays, dailyHours);
-
-                    // Resolve the UNPAID_PERMISSION DeductionType TypeId.
+                    // Resolve the UNPAID_PERMISSION DeductionType TypeId — must be seeded before use.
                     var typeId = await _db.MasterDataItems
                         .Where(m => m.ObjectType == MasterDataObjectType.DeductionType
                                     && m.Code == "UNPAID_PERMISSION")
                         .Select(m => m.Id)
                         .FirstOrDefaultAsync(ct);
+
+                    if (typeId == Guid.Empty)
+                        throw new NonRetryableEffectException(
+                            "UNPAID_PERMISSION deduction type is not seeded; run master-data seed-defaults. " +
+                            "/ نوع الخصم UNPAID_PERMISSION غير مُهيأ؛ شغّل تهيئة البيانات الأساسية.");
+
+                    // Resolve wage and create born-Approved PayrollTransaction.
+                    var (monthlyWage, divisorDays, dailyHours) =
+                        await _wageResolver.ResolveAsync(ctx.EmployeeId, date, ct);
+                    var amount = UnpaidPermissionDeduction.Amount(monthlyWage, excused, divisorDays, dailyHours);
 
                     _db.PayrollTransactions.Add(new PayrollTransaction
                     {

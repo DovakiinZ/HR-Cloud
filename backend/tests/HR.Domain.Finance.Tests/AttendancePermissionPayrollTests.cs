@@ -165,13 +165,25 @@ public class AttendancePermissionPayrollTests
         await db.SaveChangesAsync();
     }
 
-    private static EffectContext Context(Guid employeeId, Guid requestId, object payload) => new()
+    private static EffectContext Context(Guid employeeId, Guid requestId, object payload,
+        Guid? actorUserId = null) => new()
     {
         RequestInstanceId = requestId,
         RequestNumber = "REQ-PAY-1",
         RequestTypeCode = "ATTENDANCE_PERMISSION",
         EmployeeId = employeeId,
-        ActorUserId = Guid.Parse("22222222-2222-2222-2222-222222222222"),
+        ActorUserId = actorUserId ?? Guid.Parse("22222222-2222-2222-2222-222222222222"),
+        Payload = JsonSerializer.SerializeToElement(payload),
+    };
+
+    /// <summary>Build an EffectContext with ActorUserId explicitly set to null (system-origin flow).</summary>
+    private static EffectContext ContextNoActor(Guid employeeId, Guid requestId, object payload) => new()
+    {
+        RequestInstanceId = requestId,
+        RequestNumber = "REQ-PAY-1",
+        RequestTypeCode = "ATTENDANCE_PERMISSION",
+        EmployeeId = employeeId,
+        ActorUserId = null,
         Payload = JsonSerializer.SerializeToElement(payload),
     };
 
@@ -262,26 +274,8 @@ public class AttendancePermissionPayrollTests
         await using var db = Ctx($"t-{Guid.NewGuid()}");
         var emp = await SeedEmployeeWithShiftAsync(db, basicSalary: 12000m);
         await SeedUnpaidDeductionTypeAsync(db);
-        // Non-default policy: 26-day divisor, 7 payable hours.
-        await SeedPolicyAsync(db, basis: DayBasis.Fixed30, dailyHours: 7m);
-
-        // Manually override the basis via direct policy tweak (EF in-memory).
-        var policy = await db.AttendancePolicies.SingleAsync();
-        // We use fixed30 but set hours to 7 — change basis to WorkingDays to test divisor change.
-        // Instead: seed a policy with divisor 26 (CalendarMonth for 2026-02 = 28, so use a fixed workaround:
-        // we'll set divisorBasis=Fixed30 but tune hours, and separately test a month where CalendarMonth≠30).
-        // SIMPLER: directly seed an explicit policy record with the desired values.
-        db.AttendancePolicies.Remove(policy);
-        await db.SaveChangesAsync();
-
-        db.AttendancePolicies.Add(new AttendancePolicy
-        {
-            IsActive = true, IsDefault = true,
-            UnpaidDivisorBasis = DayBasis.CalendarMonth, // August = 31 days
-            UnpaidDailyPayableHours = 7m,
-        });
-        await db.SaveChangesAsync();
-
+        // Non-default policy: CalendarMonth divisor (August = 31 days), 7 payable hours.
+        await SeedPolicyAsync(db, basis: DayBasis.CalendarMonth, dailyHours: 7m);
         var code = await SeedPermissionTypeAsync(db, paid: false);
 
         // 08:00–12:00 = 240 min in-shift (August 2026 = 31 calendar days)
@@ -327,11 +321,67 @@ public class AttendancePermissionPayrollTests
         // No deduction created.
         Assert.Equal(0, await db.PayrollTransactions.CountAsync());
 
-        // A PayrollAdjustmentNeeded notification must exist.
+        // A PayrollAdjustmentNeeded notification must exist (actor is non-null in this test).
         var notification = await db.Notifications.AsNoTracking().SingleAsync();
         Assert.Equal("PayrollAdjustmentNeeded", notification.Category);
         Assert.Equal("/payroll", notification.Link);
+        Assert.NotEqual(Guid.Empty, notification.UserId);
         Assert.False(string.IsNullOrWhiteSpace(notification.BodyAr));
         Assert.False(string.IsNullOrWhiteSpace(notification.BodyEn));
+    }
+
+    [Fact]
+    public async Task Unseeded_deduction_type_throws_NonRetryableEffectException_and_creates_no_transaction()
+    {
+        // UNPAID_PERMISSION DeductionType master-data row is intentionally NOT seeded.
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = await SeedEmployeeWithShiftAsync(db);
+        await SeedPolicyAsync(db);
+        var code = await SeedPermissionTypeAsync(db, paid: false);
+
+        var ex = await Assert.ThrowsAsync<NonRetryableEffectException>(() =>
+            Executor(db).ExecuteAsync(
+                Context(emp, Guid.NewGuid(), new
+                {
+                    date = "2026-08-04", fromTime = "08:00", toTime = "12:00",
+                    permissionTypeId = code
+                }), default));
+
+        // Must mention UNPAID_PERMISSION and seed-defaults in both languages.
+        Assert.Contains("UNPAID_PERMISSION", ex.Message);
+        Assert.Contains("seed-defaults", ex.Message);
+        Assert.Contains("تهيئة البيانات الأساسية", ex.Message);
+
+        // No transaction must have been persisted.
+        Assert.Equal(0, await db.PayrollTransactions.CountAsync());
+    }
+
+    [Fact]
+    public async Task Finalized_period_with_null_actor_emits_no_notification_but_still_flags()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var emp = await SeedEmployeeWithShiftAsync(db);
+        await SeedUnpaidDeductionTypeAsync(db);
+        await SeedPolicyAsync(db);
+        var code = await SeedPermissionTypeAsync(db, paid: false);
+
+        // System-origin context: ActorUserId is null.
+        var result = await Executor(db, new ClosedPeriodGuard()).ExecuteAsync(
+            ContextNoActor(emp, Guid.NewGuid(), new
+            {
+                date = "2026-08-04", fromTime = "08:00", toTime = "12:00",
+                permissionTypeId = code
+            }), default);
+        await db.SaveChangesAsync();
+
+        // No deduction.
+        Assert.Equal(0, await db.PayrollTransactions.CountAsync());
+
+        // No notification (null actor → nothing to route to).
+        Assert.Equal(0, await db.Notifications.CountAsync());
+
+        // payrollAdjustmentFlagged must still be true in the after-state.
+        var afterJson = System.Text.Json.JsonSerializer.Serialize(result.AfterState);
+        Assert.Contains("\"payrollAdjustmentFlagged\":true", afterJson);
     }
 }
