@@ -75,6 +75,22 @@ public class AttendancePolicyConfiguration : IEntityTypeConfiguration<Attendance
     }
 }
 
+public class AttendancePermissionConfiguration : IEntityTypeConfiguration<AttendancePermission>
+{
+    public void Configure(EntityTypeBuilder<AttendancePermission> builder)
+    {
+        builder.ToTable("attendance_permissions");
+        builder.HasKey(x => x.Id);
+        builder.Property(x => x.Source).HasMaxLength(50);
+        builder.Property(x => x.Reason).HasMaxLength(1000);
+        builder.HasIndex(x => x.TenantId);
+        // Lookup by employee/day and calendar-month range (calc, display, cap tally).
+        builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.Date });
+        // Idempotency: one permission per approved request instance.
+        builder.HasIndex(x => new { x.TenantId, x.RequestInstanceId });
+    }
+}
+
 public class AttendanceHolidayConfiguration : IEntityTypeConfiguration<AttendanceHoliday>
 {
     public void Configure(EntityTypeBuilder<AttendanceHoliday> builder)

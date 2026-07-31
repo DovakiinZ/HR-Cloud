@@ -105,6 +105,24 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
         },
         new()
         {
+            EffectType = EffectTypes.AttendanceCreatePermission,
+            LabelAr = "تسجيل استئذان", LabelEn = "Record attendance permission",
+            DescriptionAr = "يسجل استئذاناً معتمداً (نافذة زمنية) يعفي التأخير/الانصراف المبكر ضمنها، مع فرض الحد الشهري.",
+            DescriptionEn = "Records an approved attendance permission (a time window) that excuses late/early minutes within it, enforcing the monthly cap.",
+            Module = "Attendance",
+            SupportedTriggers = FinalOnly,
+            ExecutionMode = EffectExecutionMode.Transactional,
+            Inputs = new[]
+            {
+                In("date", "التاريخ", "Date", true, FieldOrContext),
+                In("fromTime", "من الساعة", "From time", true, FieldOrContext),
+                In("toTime", "إلى الساعة", "To time", true, FieldOrContext),
+                In("reason", "السبب", "Reason", false, FieldContextOrConstant),
+            },
+            RequiredPermissions = new[] { "Attendance.Edit" },
+        },
+        new()
+        {
             EffectType = EffectTypes.ExpenseCreateClaim,
             LabelAr = "إنشاء مطالبة مصروف", LabelEn = "Create expense claim",
             DescriptionAr = "ينشئ مطالبة مصروف معتمدة للموظف.",

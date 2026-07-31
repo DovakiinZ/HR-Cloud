@@ -17,6 +17,7 @@ public static class MasterDataObjectType
     public const string EmploymentType = "EmploymentType";
     public const string ContractType = "ContractType";
     public const string LeaveType = "LeaveType";
+    public const string AttendancePermissionType = "AttendancePermissionType";
     public const string AllowanceType = "AllowanceType";
     public const string AdditionType = "AdditionType";
     public const string DeductionType = "DeductionType";
@@ -45,7 +46,7 @@ public static class MasterDataObjectType
     public static readonly IReadOnlyList<string> All = new[]
     {
         JobTitle, Department, Branch, Position, Grade, CostCenter,
-        EmploymentType, ContractType, LeaveType, AllowanceType, AdditionType, DeductionType,
+        EmploymentType, ContractType, LeaveType, AttendancePermissionType, AllowanceType, AdditionType, DeductionType,
         DocumentType, RequestType, RequestCategory, ShiftType, AttendancePolicy, PayrollGroup,
         PaymentMethod, LeavePolicy, WorkLocation, ExpenseCategory, LoanType, AssetType,
         RecruitmentSource, CandidateStage, Tag, Skill, Bank, Nationality,
