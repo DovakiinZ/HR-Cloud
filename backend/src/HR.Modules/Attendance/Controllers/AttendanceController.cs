@@ -1,6 +1,7 @@
 using HR.Api.Controllers;
 using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
+using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
 using HR.Application.Engines.Finance;
 using HR.Domain.Engines.Finance;
@@ -31,11 +32,15 @@ public class AttendanceController : BaseApiController
 {
     private readonly IAttendanceService _svc;
     private readonly IAttendancePayrollSyncService _payrollSync;
+    private readonly IAttendancePermissionTypeService _types;
+    private readonly ICurrentUserService _user;
     private readonly ApplicationDbContext _db;
     public AttendanceController(IAttendanceService svc,
         IAttendancePayrollSyncService payrollSync,
+        IAttendancePermissionTypeService types,
+        ICurrentUserService user,
         ApplicationDbContext db)
-    { _svc = svc; _payrollSync = payrollSync; _db = db; }
+    { _svc = svc; _payrollSync = payrollSync; _types = types; _user = user; _db = db; }
 
     public sealed class AttendanceQuery
     {
@@ -144,6 +149,25 @@ public class AttendanceController : BaseApiController
         else { rFrom = rTo = q.Date is { } d ? Utc(d) : Today; }
         var rows = await _svc.GetRangeRowsAsync(q.ToFilter(), rFrom, rTo, ct);
         return File(AttendanceExporter.ExportRows(rows), mime, $"attendance-{stamp}.xlsx");
+    }
+
+    /// <summary>Returns the active permission types the calling employee is eligible for, together with
+    /// today's and this-month's usage. Self-service: resolves the caller's employee from their UserId.</summary>
+    [HttpGet("permissions/eligible-types")]
+    [RequirePermission("Attendance.View")]
+    public async Task<ActionResult<ApiResponse<IReadOnlyList<EligiblePermissionTypeDto>>>> GetEligiblePermissionTypes(CancellationToken ct)
+    {
+        var employeeId = await _db.Employees.AsNoTracking()
+            .Where(e => e.UserId == _user.UserId)
+            .Select(e => (Guid?)e.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (employeeId is null)
+            return NotFound(ApiResponse<IReadOnlyList<EligiblePermissionTypeDto>>.Fail(
+                "لم يتم العثور على سجل موظف لهذا الحساب / No employee record found for this user."));
+
+        var types = await _types.GetEligibleTypesAsync(employeeId.Value, ct);
+        return OkResponse(types);
     }
 
     [HttpPost("payroll-impact/sync")]
