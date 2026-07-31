@@ -54,6 +54,11 @@ public interface IAttendancePermissionTypeService
     /// <summary>Resolves a single type by code (or id string) for the given employee.
     /// Returns null if the type doesn't exist or the employee is not eligible.</summary>
     Task<PermissionTypeContext?> ResolveForRequestAsync(Guid employeeId, string typeCodeOrId, CancellationToken ct);
+
+    /// <summary>Counts the employee's already-approved permissions for the given type
+    /// on <paramref name="date"/> (today) and for the whole calendar month containing <paramref name="date"/>.</summary>
+    Task<HR.Domain.Engines.Attendance.PermissionUsageTally> TallyAsync(
+        Guid employeeId, Guid typeId, DateTime date, CancellationToken ct);
 }
 
 // ── Implementation ────────────────────────────────────────────────────────────
@@ -143,6 +148,30 @@ public sealed class AttendancePermissionTypeService : IAttendancePermissionTypeS
         if (!await IsEligibleAsync(employeeId, rules, ct)) return null;
 
         return new PermissionTypeContext(item, rules);
+    }
+
+    public async Task<HR.Domain.Engines.Attendance.PermissionUsageTally> TallyAsync(
+        Guid employeeId, Guid typeId, DateTime date, CancellationToken ct)
+    {
+        var dayStart = DateTime.SpecifyKind(date.Date, DateTimeKind.Utc);
+        var monthStart = new DateTime(date.Year, date.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+        var monthEnd = monthStart.AddMonths(1);
+
+        var monthPerms = await _db.AttendancePermissions.AsNoTracking()
+            .Where(p => p.EmployeeId == employeeId
+                     && p.PermissionTypeId == typeId
+                     && p.Date >= monthStart
+                     && p.Date < monthEnd)
+            .Select(p => new { p.Date, p.ExcusedMinutes })
+            .ToListAsync(ct);
+
+        var dayPerms = monthPerms.Where(p => p.Date.Date == dayStart.Date).ToList();
+
+        return new HR.Domain.Engines.Attendance.PermissionUsageTally(
+            UsedMinutesDay:    dayPerms.Sum(p => p.ExcusedMinutes),
+            UsedMinutesMonth:  monthPerms.Sum(p => p.ExcusedMinutes),
+            UsedRequestsDay:   dayPerms.Count,
+            UsedRequestsMonth: monthPerms.Count);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

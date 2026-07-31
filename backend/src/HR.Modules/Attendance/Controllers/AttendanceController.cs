@@ -3,7 +3,9 @@ using HR.Api.Filters;
 using HR.Application.Common.Exceptions;
 using HR.Application.Common.Interfaces;
 using HR.Application.Common.Models;
+using HR.Application.Engines.Attendance;
 using HR.Application.Engines.Finance;
+using HR.Domain.Engines.Attendance;
 using HR.Domain.Engines.Finance;
 using HR.Domain.Enums;
 using HR.Infrastructure.Persistence;
@@ -168,6 +170,133 @@ public class AttendanceController : BaseApiController
 
         var types = await _types.GetEligibleTypesAsync(employeeId.Value, ct);
         return OkResponse(types);
+    }
+
+    // ── Permission validate endpoint ──────────────────────────────────────────
+
+    public sealed class ValidatePermissionRequest
+    {
+        /// <summary>Permission type code or id string.</summary>
+        public string PermissionTypeId { get; set; } = null!;
+        /// <summary>Working day the permission applies to (ISO 8601 date).</summary>
+        public DateTime Date { get; set; }
+        /// <summary>"HH:mm" or minutes-from-midnight (int).</summary>
+        public string FromTime { get; set; } = null!;
+        /// <summary>"HH:mm" or minutes-from-midnight (int).</summary>
+        public string ToTime { get; set; } = null!;
+        /// <summary>Optional; minutes-from-midnight alternative to FromTime.</summary>
+        public int? FromMinutes { get; set; }
+        /// <summary>Optional; minutes-from-midnight alternative to ToTime.</summary>
+        public int? ToMinutes { get; set; }
+    }
+
+    public sealed class ValidatePermissionResponse
+    {
+        public int DurationMinutes { get; set; }
+        public int ExcusedMinutes { get; set; }
+        public PermissionUsageDto? Usage { get; set; }
+        public PermissionDecisionDto Decision { get; set; } = null!;
+        public bool OverrideRequired { get; set; }
+    }
+
+    public sealed class PermissionDecisionDto
+    {
+        public string Outcome { get; set; } = null!;
+        public string? ReasonAr { get; set; }
+        public string? ReasonEn { get; set; }
+    }
+
+    /// <summary>Validates a proposed attendance permission window for the calling employee — returns
+    /// the excused-minutes, current usage, and cap decision without committing anything.</summary>
+    [HttpPost("permissions/validate")]
+    [RequirePermission("Attendance.View")]
+    public async Task<ActionResult<ApiResponse<ValidatePermissionResponse>>> ValidatePermission(
+        [FromBody] ValidatePermissionRequest req, CancellationToken ct)
+    {
+        // Resolve the calling employee from their UserId (self-service).
+        var employeeId = await _db.Employees.AsNoTracking()
+            .Where(e => e.UserId == _user.UserId)
+            .Select(e => (Guid?)e.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (employeeId is null)
+            return NotFound(ApiResponse<ValidatePermissionResponse>.Fail(
+                "لم يتم العثور على سجل موظف لهذا الحساب / No employee record found for this user."));
+
+        // Resolve the permission type.
+        var typeCtx = await _types.ResolveForRequestAsync(employeeId.Value, req.PermissionTypeId, ct);
+        if (typeCtx is null)
+            return BadRequest(ApiResponse<ValidatePermissionResponse>.Fail(
+                $"نوع الاستئذان غير موجود أو الموظف غير مؤهل / Permission type '{req.PermissionTypeId}' not found or employee ineligible."));
+
+        // Parse window.
+        var date = DateTime.SpecifyKind(req.Date.Date, DateTimeKind.Utc);
+        var fromMin = req.FromMinutes ?? ParseMinute(req.FromTime);
+        var toMin = req.ToMinutes ?? ParseMinute(req.ToTime);
+        var durationMinutes = Math.Max(0, toMin - fromMin);
+
+        // Snapshot window∩shift excused minutes.
+        var scope = await _db.Employees.AsNoTracking()
+            .Where(e => e.Id == employeeId.Value)
+            .Select(e => new EmployeeScope(e.Id, e.DepartmentId, e.BranchId, e.JobTitleId))
+            .FirstOrDefaultAsync(ct);
+        Shift? shift = null;
+        if (scope.Id != Guid.Empty)
+        {
+            var assignments = await _db.ShiftAssignments.AsNoTracking().ToListAsync(ct);
+            var shifts = await _db.Shifts.AsNoTracking().ToListAsync(ct);
+            shift = new ShiftResolver().Resolve(assignments, shifts.ToDictionary(s => s.Id), scope, date);
+        }
+        var window = new PermissionWindow(fromMin, toMin);
+        var excusedMinutes = PermissionMath.WindowMinutesWithinShift(shift, new[] { window });
+
+        // Tally current usage for this type.
+        var tally = await _types.TallyAsync(employeeId.Value, typeCtx.Item.Id, date, ct);
+
+        // Load policy for monthly-dim fallback.
+        var policy = await _db.AttendancePolicies.AsNoTracking()
+            .Where(x => x.IsActive).OrderByDescending(x => x.IsDefault).FirstOrDefaultAsync(ct);
+
+        // Evaluate.
+        var limits = PermissionLimitResolver.Resolve(typeCtx.Rules, policy);
+        var decision = AttendancePermissionCap.Evaluate(limits, tally, excusedMinutes);
+
+        // Build usage DTO (mirrors GetEligibleTypesAsync ComputeUsage, with resolved monthly limits).
+        var usageDto = new PermissionUsageDto(
+            UsedMinutesDay: tally.UsedMinutesDay,
+            RemainingMinutesDay: limits.MaxMinutesPerDay.HasValue
+                ? Math.Max(0, limits.MaxMinutesPerDay.Value - tally.UsedMinutesDay) : null,
+            UsedMinutesMonth: tally.UsedMinutesMonth,
+            RemainingMinutesMonth: limits.MaxMinutesPerMonth.HasValue
+                ? Math.Max(0, limits.MaxMinutesPerMonth.Value - tally.UsedMinutesMonth) : null,
+            UsedRequestsDay: tally.UsedRequestsDay,
+            RemainingRequestsDay: limits.MaxRequestsPerDay.HasValue
+                ? Math.Max(0, limits.MaxRequestsPerDay.Value - tally.UsedRequestsDay) : null,
+            UsedRequestsMonth: tally.UsedRequestsMonth,
+            RemainingRequestsMonth: limits.MaxRequestsPerMonth.HasValue
+                ? Math.Max(0, limits.MaxRequestsPerMonth.Value - tally.UsedRequestsMonth) : null);
+
+        return OkResponse(new ValidatePermissionResponse
+        {
+            DurationMinutes = durationMinutes,
+            ExcusedMinutes = excusedMinutes,
+            Usage = usageDto,
+            Decision = new PermissionDecisionDto
+            {
+                Outcome = decision.Outcome.ToString(),
+                ReasonAr = decision.ReasonAr,
+                ReasonEn = decision.ReasonEn,
+            },
+            OverrideRequired = decision.RequiresOverride,
+        });
+    }
+
+    private static int ParseMinute(string? timeStr)
+    {
+        if (string.IsNullOrWhiteSpace(timeStr)) return 0;
+        if (int.TryParse(timeStr, out var m)) return m;
+        if (TimeSpan.TryParse(timeStr, out var t)) return (int)t.TotalMinutes;
+        return 0;
     }
 
     [HttpPost("payroll-impact/sync")]

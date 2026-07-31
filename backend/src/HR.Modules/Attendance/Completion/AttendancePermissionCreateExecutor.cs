@@ -1,5 +1,6 @@
 using FluentValidation.Results;
 using HR.Application.Common.Exceptions;
+using HR.Application.Engines.Attendance;
 using HR.Application.Engines.Completion;
 using HR.Domain.Engines.Attendance;
 using HR.Infrastructure.Persistence;
@@ -9,20 +10,27 @@ using Microsoft.EntityFrameworkCore;
 namespace HR.Modules.Attendance.Completion;
 
 /// <summary>Effect: record an approved attendance permission (استئذان) as a durable excuse row, and
-/// enforce the tenant's monthly cap. The window∩shift minutes are snapshotted as
-/// <see cref="AttendancePermission.ExcusedMinutes"/> (the value tallied against the cap); the calc
-/// engine later waives the late/early minutes overlapping the window. Over-cap under Block mode throws
-/// (the completion transaction rolls back and the request lands in CompletionFailed); under Warn mode
-/// the row is still written and the summary flags it.</summary>
+/// enforce per-type (and policy-fallback) limits. The window∩shift minutes are snapshotted as
+/// <see cref="AttendancePermission.ExcusedMinutes"/>; the calc engine later waives the
+/// late/early minutes overlapping the window.
+/// <para>Limits are evaluated in the order: per-request → per-day-minutes → per-month-minutes →
+/// per-day-count → per-month-count. The first breached limit determines the outcome:
+/// Block → throws <see cref="NonRetryableEffectException"/>;
+/// RequireOverride → requires a non-empty <c>overrideReason</c> in the payload, writes an
+/// <see cref="AttendanceAuditLog"/>, and flags <c>capOverride=true</c>;
+/// Warn → proceeds, flags <c>capWarning=true</c>.</para></summary>
 public sealed class AttendancePermissionCreateExecutor : IEffectExecutor
 {
     private readonly ApplicationDbContext _db;
     private readonly IShiftResolver _resolver;
+    private readonly IAttendancePermissionTypeService _types;
 
-    public AttendancePermissionCreateExecutor(ApplicationDbContext db, IShiftResolver resolver)
+    public AttendancePermissionCreateExecutor(
+        ApplicationDbContext db, IShiftResolver resolver, IAttendancePermissionTypeService types)
     {
         _db = db;
         _resolver = resolver;
+        _types = types;
     }
 
     public string EffectType => EffectTypes.AttendanceCreatePermission;
@@ -37,7 +45,7 @@ public sealed class AttendancePermissionCreateExecutor : IEffectExecutor
         if (toMin <= fromMin)
             throw Validation("window", "نافذة الاستئذان غير صحيحة / Permission window is invalid (end must be after start).");
 
-        // Idempotency: one permission row per approved request instance.
+        // ── Idempotency: one permission row per approved request instance ────────────────────────────
         var already = await _db.AttendancePermissions.AnyAsync(
             p => p.EmployeeId == ctx.EmployeeId && p.RequestInstanceId == ctx.RequestInstanceId, ct);
         if (already)
@@ -45,24 +53,68 @@ public sealed class AttendancePermissionCreateExecutor : IEffectExecutor
                 targetEntityType: nameof(AttendancePermission),
                 summary: $"Attendance permission for {date:yyyy-MM-dd} already recorded by this request.");
 
-        // Snapshot the window∩shift minutes (falls back to raw window length when no shift is assigned).
+        // ── Resolve permission type (required; null = missing or ineligible) ─────────────────────────
+        var permissionTypeId = ctx.Str("permissionTypeId");
+        if (string.IsNullOrWhiteSpace(permissionTypeId))
+            throw new NonRetryableEffectException(
+                "permissionTypeId is required in the effect payload. / معرّف نوع الاستئذان مطلوب في الحمولة.");
+
+        var typeCtx = await _types.ResolveForRequestAsync(ctx.EmployeeId, permissionTypeId, ct);
+        if (typeCtx is null)
+            throw new NonRetryableEffectException(
+                $"Attendance permission type '{permissionTypeId}' not found or employee is ineligible. " +
+                $"/ نوع الاستئذان غير موجود أو الموظف غير مؤهل.");
+
+        // ── Snapshot the window∩shift minutes ───────────────────────────────────────────────────────
         var window = new PermissionWindow(fromMin, toMin);
         var shift = await ResolveShiftAsync(ctx.EmployeeId, date, ct);
         var excused = PermissionMath.WindowMinutesWithinShift(shift, new[] { window });
 
-        // Monthly cap — tally the employee's approved permissions in the calendar month of `date`.
+        // ── Load policy for monthly-dim fallback ────────────────────────────────────────────────────
         var policy = await _db.AttendancePolicies.AsNoTracking()
             .Where(x => x.IsActive).OrderByDescending(x => x.IsDefault).FirstOrDefaultAsync(ct);
-        var monthStart = new DateTime(date.Year, date.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-        var monthEnd = monthStart.AddMonths(1);
-        var priorMinutes = await _db.AttendancePermissions.AsNoTracking()
-            .Where(p => p.EmployeeId == ctx.EmployeeId && p.Date >= monthStart && p.Date < monthEnd)
-            .Select(p => p.ExcusedMinutes).ToListAsync(ct);
 
-        var decision = AttendancePermissionCap.Evaluate(policy, priorMinutes.Count, priorMinutes.Sum(), excused);
+        // ── Tally existing per-type usage ────────────────────────────────────────────────────────────
+        var tally = await _types.TallyAsync(ctx.EmployeeId, typeCtx.Item.Id, date, ct);
+
+        // ── Evaluate limits ──────────────────────────────────────────────────────────────────────────
+        var limits = PermissionLimitResolver.Resolve(typeCtx.Rules, policy);
+        var decision = AttendancePermissionCap.Evaluate(limits, tally, excused);
+
+        bool capWarning = false;
+        bool capOverride = false;
+
         if (decision.IsBlocked)
-            throw new NonRetryableEffectException(decision.ReasonEn ?? "Monthly attendance-permission cap exceeded.");
+            throw new NonRetryableEffectException(
+                decision.ReasonEn ?? "Attendance permission limit exceeded.");
 
+        if (decision.RequiresOverride)
+        {
+            var overrideReason = ctx.Str("overrideReason");
+            if (string.IsNullOrWhiteSpace(overrideReason))
+                throw new NonRetryableEffectException(
+                    $"An override reason is required to exceed this permission type's limit. " +
+                    $"({decision.ReasonEn}) / سبب التجاوز مطلوب لتجاوز حد نوع الاستئذان. ({decision.ReasonAr})");
+
+            // Write audit log for the cap override.
+            _db.AttendanceAuditLogs.Add(new AttendanceAuditLog
+            {
+                EmployeeId = ctx.EmployeeId,
+                Date = date,
+                Action = "PermissionCapOverride",
+                DetailsAr = $"تم تجاوز حد الاستئذان: {decision.ReasonAr} — سبب التجاوز: {overrideReason}",
+                DetailsEn = $"Permission cap overridden: {decision.ReasonEn} — Override reason: {overrideReason}",
+                ActorUserId = ctx.ActorUserId,
+                At = DateTime.UtcNow,
+            });
+
+            capOverride = true;
+        }
+
+        if (decision.IsWarning)
+            capWarning = true;
+
+        // ── Persist the permission row ────────────────────────────────────────────────────────────────
         var row = new AttendancePermission
         {
             EmployeeId = ctx.EmployeeId,
@@ -72,18 +124,26 @@ public sealed class AttendancePermissionCreateExecutor : IEffectExecutor
             ExcusedMinutes = excused,
             Reason = ctx.Str("reason"),
             RequestInstanceId = ctx.RequestInstanceId,
+            PermissionTypeId = typeCtx.Item.Id,
             Source = AttendanceSources.AttendancePermission,
             CreatedByUserId = ctx.ActorUserId,
         };
         _db.AttendancePermissions.Add(row);
 
-        var summary = decision.IsWarning
-            ? $"Attendance permission recorded for {date:yyyy-MM-dd} ({excused}m) — over the monthly cap (warning)."
-            : $"Attendance permission recorded for {date:yyyy-MM-dd} ({excused}m excused).";
+        var summary = capOverride
+            ? $"Attendance permission recorded for {date:yyyy-MM-dd} ({excused}m) — cap override applied."
+            : capWarning
+                ? $"Attendance permission recorded for {date:yyyy-MM-dd} ({excused}m) — over the cap (warning)."
+                : $"Attendance permission recorded for {date:yyyy-MM-dd} ({excused}m excused).";
 
         return EffectExecutionResult.Ok(
             targetEntityType: nameof(AttendancePermission), targetRecordId: row.Id,
-            after: new { row.Date, row.FromMinutes, row.ToMinutes, row.ExcusedMinutes, capWarning = decision.IsWarning },
+            after: new
+            {
+                row.Date, row.FromMinutes, row.ToMinutes, row.ExcusedMinutes,
+                row.PermissionTypeId,
+                capWarning, capOverride,
+            },
             summary: summary);
     }
 
