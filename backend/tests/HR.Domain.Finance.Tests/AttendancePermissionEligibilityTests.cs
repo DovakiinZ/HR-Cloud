@@ -47,6 +47,21 @@ public class AttendancePermissionEligibilityTests
         }
     }
 
+    /// <summary>A spy IScopeEngine that records whether ResolveAsync was ever invoked.
+    /// Used to assert the service short-circuits before reaching the scope engine for null/All eligibility.</summary>
+    private sealed class SpyScopeEngine : IScopeEngine
+    {
+        public bool WasCalled { get; private set; }
+        public IReadOnlyList<ScopeDimensionInfo> Dimensions() => Array.Empty<ScopeDimensionInfo>();
+
+        public Task<ScopeResolution> ResolveAsync(SelectionScope scope, CancellationToken ct)
+        {
+            WasCalled = true;
+            // Return empty — if the service incorrectly uses this result, employee would be ineligible.
+            return Task.FromResult(new ScopeResolution(Array.Empty<Guid>(), Array.Empty<ScopeExclusion>(), Array.Empty<string>()));
+        }
+    }
+
     /// <summary>Seed a MasterDataItem for AttendancePermissionType with optional eligibility scope in MetadataJson.</summary>
     private static async Task<MasterDataItem> SeedPermissionTypeAsync(
         ApplicationDbContext db, string code, SelectionScope? eligibility = null)
@@ -96,38 +111,41 @@ public class AttendancePermissionEligibilityTests
     [Fact]
     public async Task Entire_company_type_is_eligible_for_everyone()
     {
-        // Eligibility null → type has no eligibility filter → every employee is included.
+        // Eligibility null → type has no eligibility filter → every employee is included,
+        // AND the scope engine must NOT be called (Finding 2: short-circuit proof).
         await using var db = Ctx($"t-{Guid.NewGuid()}");
         await SeedPermissionTypeAsync(db, "GENERAL"); // Eligibility = null
         var emp = await SeedEmployeeAsync(db);
 
-        // ScopeEngine should never be called when Eligibility is null; if it is, return empty to catch the bug.
-        var scope = new FakeScopeEngine(_ => Array.Empty<Guid>());
-        var svc = BuildService(db, scope);
+        var spy = new SpyScopeEngine();
+        var svc = BuildService(db, spy);
 
         var result = await svc.GetEligibleTypesAsync(emp, default);
 
         Assert.Single(result);
         Assert.Equal("GENERAL", result[0].Code);
+        Assert.False(spy.WasCalled, "IScopeEngine.ResolveAsync must NOT be called when Eligibility is null");
     }
 
     [Fact]
     public async Task Mode_All_type_is_eligible_for_everyone()
     {
-        // Eligibility.Mode == "All" → eligible for everyone; scope engine should not block.
+        // Eligibility.Mode == "All" → eligible for everyone; scope engine must NOT be called
+        // (Finding 2: short-circuit proof — calling would be wasteful and the empty spy return
+        // would wrongly make the employee ineligible if the short-circuit were missing).
         await using var db = Ctx($"t-{Guid.NewGuid()}");
         var allScope = SelectionScope.All(); // Mode = "All"
         await SeedPermissionTypeAsync(db, "ALL_TYPE", allScope);
         var emp = await SeedEmployeeAsync(db);
 
-        // Return the employee in the set (consistent with All: everyone is in).
-        var scope = new FakeScopeEngine(_ => new[] { emp });
-        var svc = BuildService(db, scope);
+        var spy = new SpyScopeEngine();
+        var svc = BuildService(db, spy);
 
         var result = await svc.GetEligibleTypesAsync(emp, default);
 
         Assert.Single(result);
         Assert.Equal("ALL_TYPE", result[0].Code);
+        Assert.False(spy.WasCalled, "IScopeEngine.ResolveAsync must NOT be called when Mode==\"All\"");
     }
 
     [Fact]
@@ -147,12 +165,7 @@ public class AttendancePermissionEligibilityTests
         var inDeptEmp = await SeedEmployeeAsync(db);
         var outDeptEmp = await SeedEmployeeAsync(db);
 
-        // Only inDeptEmp is in the dept; outDeptEmp is not.
-        var scope = new FakeScopeEngine(_ => new[] { inDeptEmp });
-        var inSvc = BuildService(db, scope);
-        var outScope = new FakeScopeEngine(_ => new[] { inDeptEmp });
-        // Same fake returns inDeptEmp — so outDeptEmp ∉ IncludedEmployeeIds.
-
+        // Fake scope always returns only inDeptEmp, so outDeptEmp ∉ IncludedEmployeeIds.
         var inResult = await BuildService(db, new FakeScopeEngine(_ => new[] { inDeptEmp }))
             .GetEligibleTypesAsync(inDeptEmp, default);
         var outResult = await BuildService(db, new FakeScopeEngine(_ => new[] { inDeptEmp }))
@@ -247,23 +260,25 @@ public class AttendancePermissionEligibilityTests
     public async Task Usage_counts_todays_and_this_months_permissions()
     {
         await using var db = Ctx($"t-{Guid.NewGuid()}");
-        await SeedPermissionTypeAsync(db, "GEN");
+        var typeItem = await SeedPermissionTypeAsync(db, "GEN");
         var emp = await SeedEmployeeAsync(db);
 
         var today = DateTime.UtcNow.Date;
         var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-        // Two permissions this month (one today, one earlier this month).
+        // Two permissions this month (one today, one earlier this month) — stamped with the type.
         db.AttendancePermissions.Add(new AttendancePermission
         {
             EmployeeId = emp, Date = today,
             FromMinutes = 480, ToMinutes = 540, ExcusedMinutes = 60,
+            PermissionTypeId = typeItem.Id,
             Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
         });
         db.AttendancePermissions.Add(new AttendancePermission
         {
             EmployeeId = emp, Date = monthStart,
             FromMinutes = 480, ToMinutes = 570, ExcusedMinutes = 90,
+            PermissionTypeId = typeItem.Id,
             Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
         });
         // One permission last month (should NOT count).
@@ -272,6 +287,7 @@ public class AttendancePermissionEligibilityTests
         {
             EmployeeId = emp, Date = lastMonth,
             FromMinutes = 480, ToMinutes = 540, ExcusedMinutes = 60,
+            PermissionTypeId = typeItem.Id,
             Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
         });
         await db.SaveChangesAsync();
@@ -291,12 +307,72 @@ public class AttendancePermissionEligibilityTests
         Assert.Null(usage.RemainingRequestsMonth);
     }
 
+    /// <summary>Regression for Finding 1 — cross-type contamination.
+    /// Two types, employee has permissions for each. Each type must see ONLY its own rows.</summary>
+    [Fact]
+    public async Task Usage_per_type_is_isolated_no_cross_type_contamination()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var typeA = await SeedPermissionTypeAsync(db, "TYPE_A");
+        var typeB = await SeedPermissionTypeAsync(db, "TYPE_B");
+        var emp = await SeedEmployeeAsync(db);
+
+        var today = DateTime.UtcNow.Date;
+        var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        // 2 permissions for TYPE_A (60 + 30 minutes), 1 for TYPE_B (45 minutes) — all today.
+        db.AttendancePermissions.Add(new AttendancePermission
+        {
+            EmployeeId = emp, Date = today,
+            FromMinutes = 480, ToMinutes = 540, ExcusedMinutes = 60,
+            PermissionTypeId = typeA.Id,
+            Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
+        });
+        db.AttendancePermissions.Add(new AttendancePermission
+        {
+            EmployeeId = emp, Date = monthStart,
+            FromMinutes = 480, ToMinutes = 510, ExcusedMinutes = 30,
+            PermissionTypeId = typeA.Id,
+            Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
+        });
+        db.AttendancePermissions.Add(new AttendancePermission
+        {
+            EmployeeId = emp, Date = today,
+            FromMinutes = 600, ToMinutes = 645, ExcusedMinutes = 45,
+            PermissionTypeId = typeB.Id,
+            Source = AttendanceSources.AttendancePermission, RequestInstanceId = Guid.NewGuid(),
+        });
+        await db.SaveChangesAsync();
+
+        var svc = BuildService(db, new FakeScopeEngine(_ => Array.Empty<Guid>()));
+        var result = await svc.GetEligibleTypesAsync(emp, default);
+
+        // Both types must appear.
+        Assert.Equal(2, result.Count);
+
+        var usageA = result.First(r => r.Code == "TYPE_A").Usage;
+        var usageB = result.First(r => r.Code == "TYPE_B").Usage;
+
+        // TYPE_A: 1 today-request (60 min today), 2 month-requests (90 min month total)
+        Assert.Equal(1, usageA.UsedRequestsDay);
+        Assert.Equal(60, usageA.UsedMinutesDay);
+        Assert.Equal(2, usageA.UsedRequestsMonth);
+        Assert.Equal(90, usageA.UsedMinutesMonth);
+
+        // TYPE_B: 1 today-request (45 min today), 1 month-request (45 min month total)
+        Assert.Equal(1, usageB.UsedRequestsDay);
+        Assert.Equal(45, usageB.UsedMinutesDay);
+        Assert.Equal(1, usageB.UsedRequestsMonth);
+        Assert.Equal(45, usageB.UsedMinutesMonth);
+    }
+
     // ── ResolveForRequestAsync ───────────────────────────────────────────────
 
     [Fact]
     public async Task ResolveForRequest_returns_context_by_code()
     {
         await using var db = Ctx($"t-{Guid.NewGuid()}");
+        // No eligibility filter → everyone is eligible (null eligibility → All).
         await SeedPermissionTypeAsync(db, "MYTYPE");
         var emp = await SeedEmployeeAsync(db);
 
@@ -317,5 +393,35 @@ public class AttendancePermissionEligibilityTests
         var ctx = await svc.ResolveForRequestAsync(emp, "NONEXISTENT", default);
 
         Assert.Null(ctx);
+    }
+
+    /// <summary>Finding 4 — contract fix: ineligible employee must also get null from ResolveForRequestAsync.</summary>
+    [Fact]
+    public async Task ResolveForRequest_returns_null_when_employee_is_ineligible()
+    {
+        await using var db = Ctx($"t-{Guid.NewGuid()}");
+        var deptId = Guid.NewGuid();
+        // Type restricted to a department scope.
+        var eligibility = new SelectionScope(
+            "Criteria",
+            new[] { new ScopeCriterion("Department", new[] { deptId }) },
+            Array.Empty<ScopeCriterion>(),
+            Array.Empty<Guid>(),
+            Array.Empty<Guid>());
+        await SeedPermissionTypeAsync(db, "DEPT_ONLY", eligibility);
+
+        var ineligibleEmp = await SeedEmployeeAsync(db);
+        var eligibleEmp = await SeedEmployeeAsync(db);
+
+        // Scope engine returns only eligibleEmp; ineligibleEmp is excluded.
+        var scope = new FakeScopeEngine(_ => new[] { eligibleEmp });
+
+        var svc = BuildService(db, scope);
+        var ctxIneligible = await svc.ResolveForRequestAsync(ineligibleEmp, "DEPT_ONLY", default);
+        var ctxEligible = await svc.ResolveForRequestAsync(eligibleEmp, "DEPT_ONLY", default);
+
+        Assert.Null(ctxIneligible);     // ineligible → null (Finding 4)
+        Assert.NotNull(ctxEligible);    // eligible → context returned
+        Assert.Equal("DEPT_ONLY", ctxEligible!.Item.Code);
     }
 }

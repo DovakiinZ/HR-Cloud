@@ -86,6 +86,8 @@ public class AttendancePermissionConfiguration : IEntityTypeConfiguration<Attend
         builder.HasIndex(x => x.TenantId);
         // Lookup by employee/day and calendar-month range (calc, display, cap tally).
         builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.Date });
+        // Per-type usage tally (Finding 1): filter by type before summing minutes/counts.
+        builder.HasIndex(x => new { x.TenantId, x.EmployeeId, x.PermissionTypeId, x.Date });
         // Idempotency: one permission per approved request instance.
         builder.HasIndex(x => new { x.TenantId, x.RequestInstanceId });
     }

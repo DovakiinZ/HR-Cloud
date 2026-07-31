@@ -81,6 +81,7 @@ public sealed class AttendancePermissionTypeService : IAttendancePermissionTypeS
         var today = DateTime.UtcNow.Date;
         var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
+        // Load ALL permissions for this employee this month once; ComputeUsage filters per-type.
         var permissionsThisMonth = await _db.AttendancePermissions.AsNoTracking()
             .Where(p => p.EmployeeId == employeeId && p.Date >= monthStart)
             .ToListAsync(ct);
@@ -93,7 +94,8 @@ public sealed class AttendancePermissionTypeService : IAttendancePermissionTypeS
 
             if (!await IsEligibleAsync(employeeId, rules, ct)) continue;
 
-            var usage = ComputeUsage(permissionsThisMonth, today, rules);
+            // Pass the type's Id so ComputeUsage only tallies rows stamped with this type.
+            var usage = ComputeUsage(permissionsThisMonth, today, rules, item.Id);
 
             result.Add(new EligiblePermissionTypeDto(
                 item.Id,
@@ -136,6 +138,10 @@ public sealed class AttendancePermissionTypeService : IAttendancePermissionTypeS
         if (item is null) return null;
 
         var rules = PermissionTypeRules.Parse(item.MetadataJson);
+
+        // Finding 4: also return null when the employee is not eligible for this type.
+        if (!await IsEligibleAsync(employeeId, rules, ct)) return null;
+
         return new PermissionTypeContext(item, rules);
     }
 
@@ -158,18 +164,24 @@ public sealed class AttendancePermissionTypeService : IAttendancePermissionTypeS
         return resolution.IncludedEmployeeIds.Contains(employeeId);
     }
 
-    /// <summary>Counts today's and this-month's usage for the employee from already-loaded permissions.</summary>
+    /// <summary>Counts today's and this-month's usage for the employee from already-loaded permissions,
+    /// filtered to only rows attributed to <paramref name="typeId"/> (null-typed rows never match).</summary>
     private static PermissionUsageDto ComputeUsage(
         List<AttendancePermission> permissionsThisMonth,
         DateTime today,
-        PermissionTypeRules rules)
+        PermissionTypeRules rules,
+        Guid typeId)
     {
-        var todayPerms = permissionsThisMonth.Where(p => p.Date.Date == today).ToList();
+        // Only rows stamped with this specific type count toward its limits (Finding 1 fix).
+        // Rows with PermissionTypeId == null (legacy or pre-executor rows) are excluded from
+        // all per-type tallies; they match no specific type.
+        var typePermsMonth = permissionsThisMonth.Where(p => p.PermissionTypeId == typeId).ToList();
+        var todayPerms = typePermsMonth.Where(p => p.Date.Date == today).ToList();
 
         int usedMinutesDay = todayPerms.Sum(p => p.ExcusedMinutes);
         int usedRequestsDay = todayPerms.Count;
-        int usedMinutesMonth = permissionsThisMonth.Sum(p => p.ExcusedMinutes);
-        int usedRequestsMonth = permissionsThisMonth.Count;
+        int usedMinutesMonth = typePermsMonth.Sum(p => p.ExcusedMinutes);
+        int usedRequestsMonth = typePermsMonth.Count;
 
         // remaining = limit - used when the type-level limit is set; else null.
         // Task 3 will add policy-level fallback resolution.
