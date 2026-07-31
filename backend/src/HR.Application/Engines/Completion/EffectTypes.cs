@@ -13,6 +13,7 @@ public static class EffectTypes
     public const string AttendanceApplyLeaveDays = "Attendance.ApplyLeaveDays";
     public const string AttendanceCreatePunch = "Attendance.CreatePunch";
     public const string AttendanceCorrect = "Attendance.Correct";
+    public const string AttendanceCreatePermission = "Attendance.CreatePermission";
 
     // Payroll-adjacent
     public const string ExpenseCreateClaim = "Expense.CreateClaim";
