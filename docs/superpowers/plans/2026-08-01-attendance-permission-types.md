@@ -26,8 +26,10 @@
 
 ## File Structure
 
+**Layering note (resolved):** `HR.Domain` has NO project references and `SelectionScope` lives in `HR.Application`. Therefore: the `PermissionExceedBehavior` enum lives in **HR.Domain** (next to `AttendancePermissionCap`); `PermissionTypeRules` (carries `SelectionScope? Eligibility`) lives in **HR.Application**; the pure `AttendancePermissionCap.Evaluate` + `PermissionLimitSet` stay in **HR.Domain**; the rules→limits bridge `PermissionLimitResolver.Resolve(rules, policy)` lives in **HR.Application** (it references both). `HR.Modules.*` reference both layers, so executors/services see everything.
+
 **Create:**
-- `backend/src/HR.Domain/Engines/Attendance/PermissionTypeRules.cs` — typed rules + `PermissionExceedBehavior` enum.
+- `backend/src/HR.Application/Engines/Attendance/PermissionTypeRules.cs` — typed rules (`PermissionExceedBehavior` enum goes in `HR.Domain/Engines/Attendance/AttendancePermissionCap.cs` or a sibling Domain file).
 - `backend/src/HR.Modules/Attendance/Services/AttendancePermissionTypeService.cs` — eligible-types + usage resolution.
 - `backend/src/HR.Domain/Engines/Attendance/UnpaidPermissionDeduction.cs` — pure wage→amount math.
 - `backend/src/HR.Modules/Attendance/Services/UnpaidPermissionWageResolver.cs` — monthly wage + divisor from config.
@@ -52,19 +54,22 @@
 ## Task 1: Permission-type config model + seeding
 
 **Files:**
-- Create: `backend/src/HR.Domain/Engines/Attendance/PermissionTypeRules.cs`
+- Create: `backend/src/HR.Application/Engines/Attendance/PermissionTypeRules.cs`
+- Create: `backend/src/HR.Domain/Engines/Attendance/PermissionExceedBehavior.cs` (enum; or add it into the existing `AttendancePermissionCap.cs` — either is fine, Domain layer)
 - Modify: `backend/src/HR.Domain/Engines/MasterData/MasterDataObjectType.cs`
 - Modify: `backend/src/HR.Infrastructure/Persistence/MasterDataDefaults.cs`
 - Test: `backend/tests/HR.Domain.Finance.Tests/PermissionTypeRulesTests.cs`
 
 **Interfaces:**
-- Produces: `PermissionTypeRules` (props: `bool Paid`; `int? MaxMinutesPerRequest, MaxMinutesPerDay, MaxMinutesPerMonth, MaxRequestsPerDay, MaxRequestsPerMonth`; `PermissionExceedBehavior ExceedBehavior`; `SelectionScope? Eligibility`), `enum PermissionExceedBehavior { Block=0, Warn=1, RequireApprovalOverride=2 }`, and `static PermissionTypeRules Parse(string? metadataJson)` (tolerant: null/empty ⇒ defaults).
+- Produces (HR.Domain): `enum PermissionExceedBehavior { Block=0, Warn=1, RequireApprovalOverride=2 }`.
+- Produces (HR.Application): `PermissionTypeRules` (props: `bool Paid`; `int? MaxMinutesPerRequest, MaxMinutesPerDay, MaxMinutesPerMonth, MaxRequestsPerDay, MaxRequestsPerMonth`; `PermissionExceedBehavior ExceedBehavior`; `SelectionScope? Eligibility`), and `static PermissionTypeRules Parse(string? metadataJson)` (tolerant: null/empty ⇒ defaults).
 - Produces: `MasterDataObjectType.AttendancePermissionType = "AttendancePermissionType"`.
 
 - [ ] **Step 1: Write the failing test** (`PermissionTypeRulesTests.cs`)
 
 ```csharp
-using HR.Domain.Engines.Attendance;
+using HR.Application.Engines.Attendance; // PermissionTypeRules
+using HR.Domain.Engines.Attendance;      // PermissionExceedBehavior
 using Xunit;
 
 namespace HR.Domain.Finance.Tests;
@@ -97,17 +102,24 @@ public class PermissionTypeRulesTests
 
 - [ ] **Step 2: Run to verify it fails** — `dotnet test …HR.Domain.Finance.Tests… --filter "FullyQualifiedName~PermissionTypeRules"` → FAIL (type missing).
 
-- [ ] **Step 3: Implement `PermissionTypeRules.cs`**
+- [ ] **Step 3: Implement the enum (HR.Domain) then the rules (HR.Application)**
 
+`backend/src/HR.Domain/Engines/Attendance/PermissionExceedBehavior.cs`:
 ```csharp
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using HR.Application.Engines.Scope;
-
 namespace HR.Domain.Engines.Attendance;
 
 /// <summary>How a breached permission-type limit is handled.</summary>
 public enum PermissionExceedBehavior { Block = 0, Warn = 1, RequireApprovalOverride = 2 }
+```
+
+`backend/src/HR.Application/Engines/Attendance/PermissionTypeRules.cs`:
+```csharp
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using HR.Application.Engines.Scope;
+using HR.Domain.Engines.Attendance;
+
+namespace HR.Application.Engines.Attendance;
 
 /// <summary>Typed view of an AttendancePermissionType MasterDataItem's MetadataJson (mirrors LeaveRules).
 /// All limits nullable; null ⇒ fall back to AttendancePolicy, else unlimited. Eligibility null/Mode=All
@@ -137,8 +149,6 @@ public sealed class PermissionTypeRules
     }
 }
 ```
-
-Note: `SelectionScope` lives in `HR.Application.Engines.Scope` (a record). Confirm `HR.Domain` references `HR.Application` — if not, place `PermissionTypeRules` in `HR.Application/Engines/Attendance/` instead and adjust `using`s. (Check project refs before writing.)
 
 - [ ] **Step 4: Run — PASS.**
 
@@ -244,18 +254,22 @@ public readonly record struct AttendancePermissionCapDecision(
     public static readonly AttendancePermissionCapDecision Allowed = new(AttendancePermissionCapOutcome.Allowed, null, null);
 }
 
+// HR.Domain — pure evaluator over a resolved limit set (no rules/Application types).
 public static class AttendancePermissionCap
 {
     // newRequestMinutes = in-shift ExcusedMinutes for THIS request.
     public static AttendancePermissionCapDecision Evaluate(
         PermissionLimitSet limits, PermissionUsageTally used, int newRequestMinutes);
+}
 
-    // Build a limit set: type rules first, AttendancePolicy fallback for the two dims it has.
+// HR.Application — bridges Application `PermissionTypeRules` + Domain `AttendancePolicy` → Domain `PermissionLimitSet`.
+public static class PermissionLimitResolver
+{
     public static PermissionLimitSet Resolve(PermissionTypeRules rules, AttendancePolicy? policy);
 }
 ```
 
-`Resolve` mapping: `MaxMinutesPerMonth ??= policy?.PermissionMaxMinutesPerMonth`; `MaxRequestsPerMonth ??= policy?.PermissionMaxPerMonth`; behavior from `rules.ExceedBehavior` (if a limit came only from the policy and the type set none at all, still use the type's behavior — the type is authoritative for behavior). The other three limits have no policy fallback.
+`PermissionLimitSet`, `PermissionUsageTally`, `AttendancePermissionCapOutcome`, `AttendancePermissionCapDecision`, and `AttendancePermissionCap.Evaluate` live in **HR.Domain** (extend the existing `AttendancePermissionCap.cs`). `PermissionLimitResolver.Resolve` lives in **HR.Application** (it references `PermissionTypeRules`). `Resolve` mapping: `MaxMinutesPerMonth ??= policy?.PermissionMaxMinutesPerMonth`; `MaxRequestsPerMonth ??= policy?.PermissionMaxPerMonth`; behavior always from `rules.ExceedBehavior` (the type is authoritative for behavior). The other three limits have no policy fallback.
 
 `Evaluate` logic: compute each `over*` boolean (`used + new > limit` when limit non-null; requests use `+1`; per-request compares `newRequestMinutes` alone). If none over → `Allowed`. Else outcome = behavior mapped (`Block→Block`, `Warn→Warn`, `RequireApprovalOverride→RequireOverride`); bilingual reason names the first breached limit.
 
