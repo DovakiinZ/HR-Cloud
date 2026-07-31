@@ -46,8 +46,11 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// v5: reconcile missing shipped system form fields by Code (additive, never removes), and
     /// refresh the system effect's ConfigurationJson for still-required effects on system-owned,
     /// un-customized ATTENDANCE_CORRECTION forms.
+    /// v6: seed ATTENDANCE_PERMISSION system request type with a 6-field form (permissionType,
+    /// date, fromTime, toTime, reason, overrideReason) mapped to Attendance.CreatePermission;
+    /// existing tenants that already had the type reconcile the required effect on upgrade.
     /// </summary>
-    public const int CurrentSeedVersion = 5;
+    public const int CurrentSeedVersion = 6;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
