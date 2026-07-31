@@ -51,6 +51,12 @@ public static class MasterDataDefaults
             ("HAJJ", "Hajj Leave", "إجازة حج"),
             ("BEREAVEMENT", "Bereavement Leave", "إجازة وفاة"));
 
+        list.Add(new MasterDataDefault(MasterDataObjectType.AttendancePermissionType, "GENERAL",         "General Permission",   "استئذان عام",   MetadataJson: "{\"paid\":true}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.AttendancePermissionType, "EMERGENCY",       "Emergency Permission", "استئذان طارئ",  MetadataJson: "{\"paid\":true}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.AttendancePermissionType, "PERSONAL",        "Personal Permission",  "استئذان شخصي",  MetadataJson: "{\"paid\":false}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.AttendancePermissionType, "LATE_ARRIVAL",    "Late Arrival",         "تأخر صباحي",    MetadataJson: "{\"paid\":true}"));
+        list.Add(new MasterDataDefault(MasterDataObjectType.AttendancePermissionType, "EARLY_DEPARTURE", "Early Departure",      "انصراف مبكر",   MetadataJson: "{\"paid\":true}"));
+
         Add(MasterDataObjectType.AllowanceType,
             ("HOUSING", "Housing Allowance", "بدل سكن"),
             ("TRANSPORT", "Transportation Allowance", "بدل نقل"),
@@ -76,7 +82,8 @@ public static class MasterDataDefaults
             ("ABSENCE", "Absence Deduction", "خصم غياب"),
             ("PENALTY", "Penalty", "جزاء"),
             ("LATE", "Late Arrival Deduction", "خصم تأخير"),
-            ("SHORTAGE", "Working Hours Shortage", "خصم نقص ساعات العمل"));
+            ("SHORTAGE", "Working Hours Shortage", "خصم نقص ساعات العمل"),
+            ("UNPAID_PERMISSION", "Unpaid Permission Deduction", "خصم استئذان بدون أجر"));
 
         Add(MasterDataObjectType.DocumentType,
             ("CONTRACT", "Employment Contract", "عقد عمل"),
