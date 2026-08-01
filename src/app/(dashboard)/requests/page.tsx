@@ -13,6 +13,7 @@ import {
 } from "@/lib/api/request-center";
 import { RequestForm } from "@/components/requests/request-form";
 import { LeaveRequestWizard } from "@/components/requests/leave-request-wizard";
+import { PermissionRequestWizard } from "@/components/requests/permission-request-wizard";
 
 type Tab = "submit" | "mine" | "inbox";
 
@@ -115,6 +116,8 @@ export default function RequestsPage() {
         <Modal onClose={() => setActiveType(null)} title={activeType?.nameAr ?? "..."}>
           {loadingType || !activeType ? (
             <div className="flex h-32 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
+          ) : activeType.code === "ATTENDANCE_PERMISSION" ? (
+            <PermissionRequestWizard type={activeType} onCancel={() => setActiveType(null)} onSubmitted={() => { setActiveType(null); setTab("mine"); refresh(); }} />
           ) : activeType.isLeaveRequest ? (
             <LeaveRequestWizard type={activeType} onCancel={() => setActiveType(null)} onSubmitted={() => { setActiveType(null); setTab("mine"); refresh(); }} />
           ) : (
