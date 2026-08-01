@@ -39,6 +39,12 @@ const categories = [
     icon: Clock,
   },
   {
+    href: "/settings/attendance/permissions",
+    title: "إعدادات الاستئذان",
+    description: "أنواع الاستئذان وقواعدها: مدفوع/غير مدفوع، الحدود اليومية والشهرية، السلوك عند التجاوز، والأهلية (الشركة/الإدارات/الفروع/موظفون محددون)",
+    icon: Clock,
+  },
+  {
     href: "/settings/payroll",
     title: "إعدادات الرواتب",
     description: "أنواع البدلات وقواعد احتسابها، مجموعات الرواتب، طرق الدفع",
