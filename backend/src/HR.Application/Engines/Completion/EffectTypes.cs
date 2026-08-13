@@ -19,6 +19,9 @@ public static class EffectTypes
     public const string ExpenseCreateClaim = "Expense.CreateClaim";
     public const string LoanCreate = "Loan.Create";
 
+    // Overtime → payroll Addition (KSA 1.5× on the approved overtime hours)
+    public const string OvertimeCreateAddition = "Overtime.CreateAddition";
+
     // Assets
     public const string AssetsAssignCustody = "Assets.AssignCustody";
 

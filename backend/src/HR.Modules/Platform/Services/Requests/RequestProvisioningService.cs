@@ -49,8 +49,9 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// v6: seed ATTENDANCE_PERMISSION system request type with a 6-field form (permissionType,
     /// date, fromTime, toTime, reason, overrideReason) mapped to Attendance.CreatePermission;
     /// existing tenants that already had the type reconcile the required effect on upgrade.
+    /// v7: OVERTIME_REQUEST re-wired from Attendance.Correct to Overtime.CreateAddition (stale effect retired).
     /// </summary>
-    public const int CurrentSeedVersion = 6;
+    public const int CurrentSeedVersion = 7;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;
@@ -137,11 +138,14 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     }
 
     /// <summary>
-    /// Brings a system request's required effects into line with what this version ships, additively.
+    /// Brings a system request's required effects into line with what this version ships.
     ///
-    /// Only ever adds a missing required effect or re-enables a disabled one. An effect the tenant
-    /// added is not in the required set and is not considered; an optional effect they disabled stays
-    /// disabled. Sequence numbers on existing rows are left as the tenant ordered them.
+    /// Adds a missing required effect, re-enables a disabled one, and retires any previously-required
+    /// system effect whose (EffectType, Trigger) pair is no longer in the shipped required set —
+    /// preventing stale system wiring from co-firing on completion (e.g. OVERTIME_REQUEST's old
+    /// Attendance.Correct after the v7 swap to Overtime.CreateAddition). An effect the tenant added
+    /// (IsRequired == false) is never considered for retirement; an optional effect they disabled
+    /// stays disabled. Sequence numbers on existing rows are left as the tenant ordered them.
     /// </summary>
     private List<string> ReconcileRequiredEffects(RequestType type)
     {
@@ -185,6 +189,25 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
             // remapped an input to a renamed form field.
             if (!match.IsRequired) { match.IsRequired = true; changes.Add($"marked {spec.EffectType} required"); }
             if (!match.IsEnabled) { match.IsEnabled = true; changes.Add($"re-enabled required effect {spec.EffectType}"); }
+        }
+
+        // Retire system effects this version no longer ships. A previously-required effect
+        // (IsRequired == true) whose (EffectType, Trigger) is no longer in the shipped required
+        // set is stale system wiring from an earlier version — disable it so it stops co-firing on
+        // completion (e.g. OVERTIME_REQUEST's old Attendance.Correct after the v7 swap to
+        // Overtime.CreateAddition). Tenant-added effects (IsRequired == false) are never touched.
+        var requiredKeys = required
+            .Select(s => (Type: s.EffectType.ToLowerInvariant(), s.Trigger))
+            .ToHashSet();
+        foreach (var e in existing)
+        {
+            if (e.IsRequired && e.IsEnabled
+                && !requiredKeys.Contains((e.EffectType.ToLowerInvariant(), e.Trigger)))
+            {
+                e.IsEnabled = false;
+                e.IsRequired = false;
+                changes.Add($"retired stale required effect {e.EffectType}");
+            }
         }
 
         return changes;

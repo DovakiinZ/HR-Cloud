@@ -125,6 +125,23 @@ public sealed class EffectActionCatalog : IEffectActionCatalog
         },
         new()
         {
+            EffectType = EffectTypes.OvertimeCreateAddition,
+            LabelAr = "احتساب عمل إضافي", LabelEn = "Record overtime pay",
+            DescriptionAr = "ينشئ إضافة راتب معتمدة للعمل الإضافي بمعدل 1.5 على الساعة، تُرحّل لشهر الراتب.",
+            DescriptionEn = "Creates an approved overtime payroll addition (1.5× hourly) posted to the overtime month.",
+            Module = "Payroll",
+            SupportedTriggers = FinalOnly,
+            ExecutionMode = EffectExecutionMode.Transactional,
+            Inputs = new[]
+            {
+                In("date", "التاريخ", "Date", true, FieldOrContext),
+                In("hours", "عدد الساعات", "Hours", true, FieldOrContext),
+                In("reason", "السبب", "Reason", false, FieldContextOrConstant),
+            },
+            RequiredPermissions = new[] { "Payroll.Create" },
+        },
+        new()
+        {
             EffectType = EffectTypes.ExpenseCreateClaim,
             LabelAr = "إنشاء مطالبة مصروف", LabelEn = "Create expense claim",
             DescriptionAr = "ينشئ مطالبة مصروف معتمدة للموظف.",
