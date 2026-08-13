@@ -348,6 +348,14 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
                 if (tenantEntity.TenantId == Guid.Empty)
                     tenantEntity.TenantId = _currentUser.TenantId;
             }
+
+            // User carries its own TenantId but is an AuditableEntity, not a TenantEntity, so the
+            // stamp above skips it. Without this, admin-created users (UsersController.Create /
+            // from-employee) persist with TenantId = Guid.Empty and then log in tenant-less,
+            // blocking all employee self-service. Stamp from the current tenant when left empty;
+            // never overwrite a tenant set explicitly (e.g. AuthService.RegisterAsync).
+            if (entry.Entity is User user && entry.State == EntityState.Added && user.TenantId == Guid.Empty)
+                user.TenantId = _currentUser.TenantId;
         }
 
         return await base.SaveChangesAsync(cancellationToken);
