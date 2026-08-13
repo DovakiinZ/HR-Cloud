@@ -50,7 +50,7 @@ public sealed class RequestProvisioningService : IRequestProvisioningService
     /// date, fromTime, toTime, reason, overrideReason) mapped to Attendance.CreatePermission;
     /// existing tenants that already had the type reconcile the required effect on upgrade.
     /// </summary>
-    public const int CurrentSeedVersion = 6;
+    public const int CurrentSeedVersion = 7;
 
     private readonly ApplicationDbContext _db;
     private readonly IRequestSeeder _seeder;

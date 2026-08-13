@@ -92,8 +92,9 @@ public static class SystemRequestEffects
 
             ["OVERTIME_REQUEST"] = new[]
             {
-                Transactional(EffectTypes.AttendanceCorrect, Map(
+                Transactional(EffectTypes.OvertimeCreateAddition, Map(
                     ("date", Field("startDate")),
+                    ("hours", Field("hours")),
                     ("reason", Field("reason")))),
             },
 

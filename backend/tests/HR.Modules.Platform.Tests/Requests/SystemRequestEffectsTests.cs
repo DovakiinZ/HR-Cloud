@@ -58,6 +58,7 @@ public class SystemRequestEffectsTests
             EffectTypes.LeaveCreateApprovedLeave, EffectTypes.AttendanceApplyLeaveDays,
             EffectTypes.AttendanceCreatePunch, EffectTypes.AttendanceCorrect,
             EffectTypes.AttendanceCreatePermission,
+            EffectTypes.OvertimeCreateAddition,
             EffectTypes.ExpenseCreateClaim, EffectTypes.LoanCreate, EffectTypes.AssetsAssignCustody,
             EffectTypes.NotificationSend, EffectTypes.TaskCreate,
         };
