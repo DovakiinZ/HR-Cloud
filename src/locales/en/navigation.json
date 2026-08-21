@@ -1,0 +1,19 @@
+{
+  "navigation": {
+    "dashboard": "Dashboard",
+    "employees": "Employees",
+    "attendance": "Attendance",
+    "leaves": "Leave",
+    "payroll": "Payroll",
+    "tasks": "Tasks",
+    "requests": "Requests",
+    "approvals": "Approvals",
+    "reports": "Reports",
+    "documents": "Documents",
+    "settings": "Settings",
+    "logout": "Sign out",
+    "notifications": "Notifications",
+    "markAllRead": "Mark all as read",
+    "noNotifications": "No notifications"
+  }
+}

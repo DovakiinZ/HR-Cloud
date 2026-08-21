@@ -1,0 +1,19 @@
+{
+  "navigation": {
+    "dashboard": "لوحة التحكم",
+    "employees": "الموظفين",
+    "attendance": "الحضور",
+    "leaves": "الإجازات",
+    "payroll": "الرواتب",
+    "tasks": "المهام",
+    "requests": "الطلبات",
+    "approvals": "الموافقات",
+    "reports": "التقارير",
+    "documents": "المستندات",
+    "settings": "الإعدادات",
+    "logout": "تسجيل الخروج",
+    "notifications": "الإشعارات",
+    "markAllRead": "تعليم الكل كمقروء",
+    "noNotifications": "لا توجد إشعارات"
+  }
+}
