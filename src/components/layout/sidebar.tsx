@@ -25,22 +25,24 @@ import {
 import { logout } from "@/lib/api/auth";
 import { getMyApprovals } from "@/lib/api/approvals";
 import { PalmMark } from "@/components/brand/sanad-logo";
+import { useT } from "@/lib/i18n/use-t";
 
 const navItems = [
-  { label: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard },
-  { label: "الموظفين", href: "/employees", icon: Users },
-  { label: "الحضور", href: "/attendance", icon: Clock },
-  { label: "الإجازات", href: "/leaves", icon: CalendarDays },
-  { label: "الرواتب", href: "/payroll", icon: Banknote },
-  { label: "المهام", href: "/tasks", icon: CheckSquare },
-  { label: "الطلبات", href: "/requests", icon: FileText },
-  { label: "الموافقات", href: "/approvals", icon: ClipboardCheck, badge: true },
-  { label: "التقارير", href: "/reports", icon: BarChart3 },
-  { label: "المستندات", href: "/documents", icon: FolderOpen },
-  { label: "الإعدادات", href: "/settings", icon: Settings },
+  { key: "navigation.dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { key: "navigation.employees", href: "/employees", icon: Users },
+  { key: "navigation.attendance", href: "/attendance", icon: Clock },
+  { key: "navigation.leaves", href: "/leaves", icon: CalendarDays },
+  { key: "navigation.payroll", href: "/payroll", icon: Banknote },
+  { key: "navigation.tasks", href: "/tasks", icon: CheckSquare },
+  { key: "navigation.requests", href: "/requests", icon: FileText },
+  { key: "navigation.approvals", href: "/approvals", icon: ClipboardCheck, badge: true },
+  { key: "navigation.reports", href: "/reports", icon: BarChart3 },
+  { key: "navigation.documents", href: "/documents", icon: FolderOpen },
+  { key: "navigation.settings", href: "/settings", icon: Settings },
 ];
 
 export function Sidebar() {
+  const { t, dir } = useT();
   const pathname = usePathname();
   const [pending, setPending] = useState(0);
 
@@ -56,7 +58,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="fixed top-0 right-0 z-40 h-screen w-16 border-l border-border bg-secondary flex flex-col items-center py-4">
+    <aside className="fixed top-0 start-0 z-40 h-screen w-16 border-e border-border bg-secondary flex flex-col items-center py-4">
       {/* Logo */}
       <div className="mb-6 flex h-10 w-10 items-center justify-center bg-primary">
         <PalmMark size={22} className="text-primary-foreground" />
@@ -81,13 +83,13 @@ export function Sidebar() {
               >
                 <Icon className="h-5 w-5" />
                 {showBadge && (
-                  <span className="absolute -top-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center bg-destructive px-1 text-[10px] font-bold text-white">
+                  <span className="absolute -top-0.5 end-0.5 flex h-4 min-w-4 items-center justify-center bg-destructive px-1 text-[10px] font-bold text-white">
                     {pending > 9 ? "9+" : pending}
                   </span>
                 )}
               </TooltipTrigger>
-              <TooltipContent side="left" className="font-sans">
-                {item.label}
+              <TooltipContent side={dir === "rtl" ? "left" : "right"} className="font-sans">
+                {t(item.key)}
               </TooltipContent>
             </Tooltip>
           );
@@ -102,8 +104,8 @@ export function Sidebar() {
         >
           <LogOut className="h-5 w-5" />
         </TooltipTrigger>
-        <TooltipContent side="left" className="font-sans">
-          تسجيل الخروج
+        <TooltipContent side={dir === "rtl" ? "left" : "right"} className="font-sans">
+          {t("navigation.logout")}
         </TooltipContent>
       </Tooltip>
     </aside>
