@@ -18,6 +18,8 @@
     "noData": "لا توجد بيانات",
     "errorTitle": "حدث خطأ",
     "retry": "إعادة المحاولة",
-    "confirmDelete": "هل أنت متأكد من الحذف؟"
+    "confirmDelete": "هل أنت متأكد من الحذف؟",
+    "langAr": "العربية",
+    "langEn": "English"
   }
 }

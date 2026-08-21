@@ -19,7 +19,7 @@ export function Topbar() {
 
   const name = user?.fullName || "—";
   const email = user?.email || "";
-  const initials = name && name !== "—" ? name.trim().charAt(0) : "؟";
+  const initials = name && name !== "—" ? name.trim().charAt(0) : "?";
 
   return (
     <header className="sticky top-0 z-30 h-14 border-b border-border bg-background flex items-center justify-between px-6">

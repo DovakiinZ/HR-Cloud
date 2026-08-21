@@ -18,6 +18,8 @@
     "noData": "No data available",
     "errorTitle": "Something went wrong",
     "retry": "Retry",
-    "confirmDelete": "Are you sure you want to delete this?"
+    "confirmDelete": "Are you sure you want to delete this?",
+    "langAr": "العربية",
+    "langEn": "English"
   }
 }

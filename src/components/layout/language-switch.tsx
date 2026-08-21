@@ -5,9 +5,9 @@ import { useT } from "@/lib/i18n/use-t";
 import type { Locale } from "@/lib/i18n/config";
 
 export function LanguageSwitch() {
-  const { locale, setLocale } = useT();
+  const { locale, setLocale, t } = useT();
   const next: Locale = locale === "ar" ? "en" : "ar";
-  const label = locale === "ar" ? "English" : "العربية";
+  const label = locale === "ar" ? t("common.langEn") : t("common.langAr");
   return (
     <button
       type="button"
