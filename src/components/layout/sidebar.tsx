@@ -49,8 +49,8 @@ export function Sidebar() {
   useEffect(() => {
     const load = () => getMyApprovals().then((a) => setPending(a.filter((x) => x.status === "Pending").length)).catch(() => {});
     load();
-    const t = setInterval(load, 60_000);
-    return () => clearInterval(t);
+    const timer = setInterval(load, 60_000);
+    return () => clearInterval(timer);
   }, [pathname]);
 
   const handleLogout = () => {
