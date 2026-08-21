@@ -1,0 +1,25 @@
+{
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "create": "Create",
+    "update": "Update",
+    "close": "Close",
+    "confirm": "Confirm",
+    "back": "Back",
+    "search": "Search...",
+    "actions": "Actions",
+    "yes": "Yes",
+    "no": "No",
+    "loading": "Loading...",
+    "noData": "No data available",
+    "errorTitle": "Something went wrong",
+    "retry": "Retry",
+    "confirmDelete": "Are you sure you want to delete this?",
+    "langAr": "العربية",
+    "langEn": "English"
+  }
+}

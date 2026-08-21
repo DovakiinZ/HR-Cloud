@@ -1,0 +1,25 @@
+{
+  "common": {
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "add": "إضافة",
+    "create": "إنشاء",
+    "update": "تحديث",
+    "close": "إغلاق",
+    "confirm": "تأكيد",
+    "back": "رجوع",
+    "search": "بحث...",
+    "actions": "الإجراءات",
+    "yes": "نعم",
+    "no": "لا",
+    "loading": "جارٍ التحميل...",
+    "noData": "لا توجد بيانات",
+    "errorTitle": "حدث خطأ",
+    "retry": "إعادة المحاولة",
+    "confirmDelete": "هل أنت متأكد من الحذف؟",
+    "langAr": "العربية",
+    "langEn": "English"
+  }
+}

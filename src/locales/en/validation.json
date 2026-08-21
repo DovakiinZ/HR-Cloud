@@ -1,0 +1,9 @@
+{
+  "validation": {
+    "required": "This field is required",
+    "email": "Please enter a valid email address",
+    "min": "Value is below the allowed minimum",
+    "max": "Value exceeds the allowed maximum",
+    "numeric": "Please enter a valid number"
+  }
+}
